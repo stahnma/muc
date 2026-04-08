@@ -3,6 +3,8 @@
 # Build configuration
 NAME := client
 GO := go
+CGO_ENABLED ?= 0
+export CGO_ENABLED
 GOFLAGS := -v
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.Version=$(VERSION)"

@@ -8,6 +8,8 @@ GOARCH ?= $(shell go env GOARCH)
 
 # Build configuration
 GO := go
+CGO_ENABLED ?= 0
+export CGO_ENABLED
 GOFLAGS :=
 LDFLAGS := -ldflags "-X main.Version=$(VERSION)"
 
