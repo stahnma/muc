@@ -296,7 +296,6 @@ func main() {
 			nats.Timeout(30*time.Second),      // Increased timeout
 			nats.PingInterval(20*time.Second), // Add periodic ping
 			nats.MaxPingsOutstanding(5),       // Allow 5 outstanding pings
-			nats.RetryOnFailedConnect(true),   // Enable automatic retry on initial connection failure
 			nats.MaxReconnects(-1),            // Unlimited reconnections
 			nats.ReconnectWait(5*time.Second), // Wait 5 seconds between reconnection attempts
 			nats.ReconnectHandler(func(nc *nats.Conn) {

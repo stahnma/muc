@@ -40,7 +40,7 @@ func DiscoverNATSServer() string {
 	// Priority 4: Environment variable MUC_NATS_SERVER_IP
 	serverIP := os.Getenv("MUC_NATS_SERVER_IP")
 	if serverIP == "" {
-		serverIP = "192.168.1.157" // Default fallback
+		serverIP = "192.168.1.70" // Default fallback
 	}
 
 	// Default port
