@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"server/consul"
 	"server/metrics"
 	"server/nats"
 	"server/storage"
@@ -60,6 +61,14 @@ func main() {
 	// Start the web server
 	slog.Info("Starting web server...")
 	go web.StartWebServer(store, config.HTTPPort)
+
+	// Register with Consul
+	deregisterConsul, err := consul.Register(config.ConsulURL, config.HTTPPort, config.NATSPort)
+	if err != nil {
+		slog.Warn("Failed to register with Consul, service will run without service discovery", "error", err)
+	} else {
+		defer deregisterConsul()
+	}
 
 	// Start business metrics updater
 	go func() {

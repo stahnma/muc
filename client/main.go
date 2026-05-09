@@ -271,12 +271,12 @@ func main() {
 	// Setup logger with CLI flags
 	_ = setupLogger()
 
-	// Discover NATS server using multiple methods:
-	// 1. MUC_NATS_URL environment variable (explicit override)
-	// 2. DNS SRV record lookup
-	// 3. Consul service discovery (if available)
-	// 4. MUC_NATS_SERVER_IP environment variable or default IP
-	natsURL := discovery.DiscoverNATSServer()
+	// Discover NATS server via environment variable or DNS SRV lookup
+	natsURL, err := discovery.DiscoverNATSServer()
+	if err != nil {
+		slog.Error("Failed to discover NATS server", "error", err)
+		os.Exit(1)
+	}
 
 	// Configure exponential backoff: start at 5s, max 10 minutes
 	// Pattern: 5s, 10s, 20s, 40s, 80s, 160s, 320s, 600s (capped)
@@ -343,7 +343,7 @@ func main() {
 		slog.Warn("Connection attempt failed, retrying", "error", err, "retry_in", duration)
 	}
 
-	err := backoff.RetryNotify(connectFunc, backoffConfig, notifyFunc)
+	err = backoff.RetryNotify(connectFunc, backoffConfig, notifyFunc)
 	if err != nil {
 		slog.Error("Failed to connect to NATS after 10 minutes of retrying", "error", err)
 		os.Exit(1)

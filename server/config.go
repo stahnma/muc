@@ -7,10 +7,11 @@ import (
 )
 
 type Config struct {
-	NATSURL  string
-	NATSPort int
-	DBPath   string
-	HTTPPort string
+	NATSURL   string
+	NATSPort  int
+	DBPath    string
+	HTTPPort  string
+	ConsulURL string
 }
 
 func LoadConfig() Config {
@@ -26,12 +27,13 @@ func LoadConfig() Config {
 	}
 
 	config := Config{
-		NATSURL:  natsURL,
-		NATSPort: natsPort,
-		DBPath:   getEnv("MUC_DB_PATH", "systems.db"),
-		HTTPPort: getEnv("MUC_HTTP_PORT", "8080"),
+		NATSURL:   natsURL,
+		NATSPort:  natsPort,
+		DBPath:    getEnv("MUC_DB_PATH", "systems.db"),
+		HTTPPort:  getEnv("MUC_HTTP_PORT", "8080"),
+		ConsulURL: getEnv("CONSUL_URL", "http://localhost:8500"),
 	}
-	slog.Info("Loaded configuration", "nats_url", config.NATSURL, "nats_port", config.NATSPort, "db_path", config.DBPath, "http_port", config.HTTPPort)
+	slog.Info("Loaded configuration", "nats_url", config.NATSURL, "nats_port", config.NATSPort, "db_path", config.DBPath, "http_port", config.HTTPPort, "consul_url", config.ConsulURL)
 	return config
 }
 
