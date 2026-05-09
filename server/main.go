@@ -63,7 +63,7 @@ func main() {
 	go web.StartWebServer(store, config.HTTPPort)
 
 	// Register with Consul
-	deregisterConsul, err := consul.Register(config.ConsulURL, config.HTTPPort, config.NATSPort)
+	deregisterConsul, err := consul.Register(config.ConsulURL, config.HTTPPort, config.NATSPort, config.ConsulTags)
 	if err != nil {
 		slog.Warn("Failed to register with Consul, service will run without service discovery", "error", err)
 	} else {

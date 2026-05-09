@@ -17,7 +17,7 @@ const (
 // Register registers this service with Consul and returns a deregistration function.
 // It registers both the HTTP service (as "muc") and the NATS service (as "muc-nats")
 // so clients can discover either endpoint.
-func Register(consulURL, httpPort string, natsPort int) (deregister func(), err error) {
+func Register(consulURL, httpPort string, natsPort int, tags []string) (deregister func(), err error) {
 	config := consulapi.DefaultConfig()
 	config.Address = consulURL
 
@@ -44,6 +44,7 @@ func Register(consulURL, httpPort string, natsPort int) (deregister func(), err 
 		ID:   httpServiceID,
 		Name: ServiceName,
 		Port: port,
+		Tags: tags,
 		Check: &consulapi.AgentServiceCheck{
 			HTTP:                           fmt.Sprintf("http://localhost:%s/api/systems", httpPort),
 			Interval:                       "10s",
@@ -62,6 +63,7 @@ func Register(consulURL, httpPort string, natsPort int) (deregister func(), err 
 		ID:   natsServiceID,
 		Name: NATSServiceName,
 		Port: natsPort,
+		Tags: tags,
 		Check: &consulapi.AgentServiceCheck{
 			TCP:                            fmt.Sprintf("localhost:%d", natsPort),
 			Interval:                       "10s",

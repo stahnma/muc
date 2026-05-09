@@ -57,23 +57,56 @@ make fmt       # Format code
 
 ### Server Configuration
 
-The server can be configured via environment variables and CLI flags:
+The server can be configured via multiple sources, loaded in the following priority order (highest to lowest):
 
-**Environment Variables:**
-- `MUC_NATS_URL`: NATS server URL (default: `embedded` - runs embedded NATS server)
-- `MUC_NATS_PORT`: Port for embedded NATS server (default: `4222`)
-- `MUC_DB_PATH`: Path to BoltDB database file (default: `systems.db`)
-- `MUC_HTTP_PORT`: Web server port (default: `8080`)
+1. **Environment variables** (prefixed with `MUC_`)
+2. **`.env` file** in the working directory
+3. **`config.yml`** in the working directory or `/etc/muc/`
+4. **Built-in defaults**
+
+Configuration is powered by [Viper](https://github.com/spf13/viper).
+
+**Configuration Keys:**
+
+| Key | Env Var | Default | Description |
+|-----|---------|---------|-------------|
+| `nats_url` | `MUC_NATS_URL` | `embedded` | NATS server URL (`embedded` runs a built-in NATS server) |
+| `nats_port` | `MUC_NATS_PORT` | `4222` | Port for embedded NATS server |
+| `db_path` | `MUC_DB_PATH` | `systems.db` | Path to BoltDB database file |
+| `http_port` | `MUC_HTTP_PORT` | `8080` | Web server port |
+| `consul_url` | `MUC_CONSUL_URL` | `http://localhost:8500` | Consul agent URL for service registration |
+| `consul_tags` | `MUC_CONSUL_TAGS` | (none) | Comma-separated Consul service tags |
 
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
 - `--json`: Output logs in JSON format (default: text format)
 
-Example:
+**Example using environment variables:**
 ```bash
 export MUC_HTTP_PORT=3000
 export MUC_DB_PATH=/var/lib/muc/systems.db
+export MUC_CONSUL_TAGS=production,us-east-1
 ./server --dev
+```
+
+**Example `.env` file:**
+```
+MUC_HTTP_PORT=3000
+MUC_DB_PATH=/var/lib/muc/systems.db
+MUC_CONSUL_URL=http://consul.local:8500
+MUC_CONSUL_TAGS=production,us-east-1
+```
+
+**Example `config.yml`:**
+```yaml
+nats_url: embedded
+nats_port: 4222
+db_path: /var/lib/muc/systems.db
+http_port: 8080
+consul_url: http://consul.local:8500
+consul_tags:
+  - production
+  - us-east-1
 ```
 
 ### Client Configuration
