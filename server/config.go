@@ -27,7 +27,7 @@ func LoadConfig() Config {
 	v.SetDefault("db_path", "systems.db")
 	v.SetDefault("http_port", "8080")
 	v.SetDefault("consul_url", "http://localhost:8500")
-	v.SetDefault("consul_tags", []string{})
+	v.SetDefault("consul_tags", "")
 
 	// Read from config.yml if present
 	v.SetConfigName("config")
@@ -58,18 +58,15 @@ func LoadConfig() Config {
 	v.SetEnvPrefix("MUC")
 	v.AutomaticEnv()
 
-	// Parse consul_tags from comma-separated string if provided as env var
+	// Parse consul_tags: comma-separated string from env/dotenv, or list from YAML
 	var consulTags []string
-	tagsVal := v.GetString("consul_tags")
-	if tagsVal != "" {
+	if tagsVal := v.GetString("consul_tags"); tagsVal != "" {
 		for _, tag := range strings.Split(tagsVal, ",") {
 			tag = strings.TrimSpace(tag)
 			if tag != "" {
 				consulTags = append(consulTags, tag)
 			}
 		}
-	} else {
-		consulTags = v.GetStringSlice("consul_tags")
 	}
 
 	config := Config{
