@@ -2,9 +2,11 @@ package main
 
 import (
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/subosito/gotenv"
 )
 
 type Config struct {
@@ -40,13 +42,15 @@ func LoadConfig() Config {
 		slog.Info("Loaded config file", "file", v.ConfigFileUsed())
 	}
 
-	// Read from .env file if present (overrides config.yml)
-	v.SetConfigName(".env")
-	v.SetConfigType("env")
-	v.AddConfigPath(".")
-	if err := v.MergeInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			slog.Warn("Error reading .env file", "error", err)
+	// Load .env file into environment (supports "export KEY=VALUE" syntax)
+	for _, envPath := range []string{"../.env", ".env"} {
+		if f, err := os.Open(envPath); err == nil {
+			if err := gotenv.Apply(f); err != nil {
+				slog.Warn("Error parsing .env file", "path", envPath, "error", err)
+			} else {
+				slog.Info("Loaded .env file", "path", envPath)
+			}
+			f.Close()
 		}
 	}
 
