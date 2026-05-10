@@ -9,6 +9,30 @@ import (
 	"strings"
 )
 
+// runDnfCheckUpdate runs dnf check-update with the given arguments and returns
+// stdout, or an error if the command fails with a non-100 exit code.
+// Exit code 100 means updates are available and is treated as success.
+func runDnfCheckUpdate(args ...string) ([]byte, error) {
+	cmd := exec.Command("/usr/bin/dnf", args...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			if exitError.ExitCode() == 100 {
+				// Exit code 100 means updates are available — not an error
+				return out, nil
+			}
+			slog.Error("dnf check-update failed", "error", err, "exitCode", exitError.ExitCode(), "stderr", stderr.String())
+		} else {
+			slog.Error("Error running dnf", "error", err, "stderr", stderr.String())
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
 // getDnfUpdates fetches updates from dnf package manager
 func getDnfUpdates() UpdateResult {
 	var updates []Update
@@ -21,22 +45,17 @@ func getDnfUpdates() UpdateResult {
 	}
 
 	debugLog("Checking for dnf updates...")
-	out, err := exec.Command("/usr/bin/dnf", "check-update", "--setopt=skip_if_unavailable=True").Output()
+
+	// Try with --setopt first, fall back to plain check-update if it fails
+	out, err := runDnfCheckUpdate("check-update", "--setopt=skip_if_unavailable=True")
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			if exitError.ExitCode() != 100 {
-				slog.Error("Error checking updates with dnf", "error", err, "exitCode", exitError.ExitCode())
-				return UpdateResult{
-					Updates:         updates,
-					ManagerDetected: false,
-				}
-			}
-		} else {
-			slog.Error("Error running dnf", "error", err)
-			return UpdateResult{
-				Updates:         updates,
-				ManagerDetected: false,
-			}
+		debugLog("Retrying dnf check-update without --setopt flag")
+		out, err = runDnfCheckUpdate("check-update")
+	}
+	if err != nil {
+		return UpdateResult{
+			Updates:         updates,
+			ManagerDetected: true,
 		}
 	}
 
