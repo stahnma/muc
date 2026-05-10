@@ -15,9 +15,13 @@ import (
 	natsServer "github.com/nats-io/nats-server/v2/server"
 )
 
+var Version = "dev"
+
 func main() {
 	// Setup logger with CLI flags
 	_ = setupLogger()
+
+	slog.Info("Starting MUC server", "version", Version)
 
 	// Load configuration
 	config := LoadConfig()
