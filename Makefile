@@ -87,8 +87,8 @@ clean:
 install: build
 	@echo "Installing binaries..."
 	install -d $(DESTDIR)/usr/local/bin
-	install -p -m755 client/client $(DESTDIR)/usr/local/bin/$(NAME)-client
-	install -p -m755 server/server $(DESTDIR)/usr/local/bin/$(NAME)-server
+	install -p -m755 client/muc-client $(DESTDIR)/usr/local/bin/$(NAME)-client
+	install -p -m755 server/muc-server $(DESTDIR)/usr/local/bin/$(NAME)-server
 
 run: fmt
 	go run *.go
@@ -97,14 +97,14 @@ json:
 	cat message | jq > m ; mv m message
 
 iter:
-	go build -o upc client/main.go 
+	go build -o muc-client client/main.go
 
 rerun:
 	flox services stop || true
 	rm -f server/systems.db
 	$(MAKE) -C client linux
 	$(MAKE) -C server build
-	cp -pr client/client.linux.arm ~
-	cp -pr client/client.linux.amd64 ~
-	scp client/client.linux.amd64 stahnma@rog:client.linux.amd64
+	cp -pr client/muc-client.linux.arm ~
+	cp -pr client/muc-client.linux.amd64 ~
+	scp client/muc-client.linux.amd64 stahnma@rog:muc-client.linux.amd64
 

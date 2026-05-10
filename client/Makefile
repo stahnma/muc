@@ -1,7 +1,7 @@
 .PHONY: all build clean test fmt tidy linux help
 
 # Build configuration
-NAME := client
+NAME := muc-client
 GO := go
 CGO_ENABLED ?= 0
 export CGO_ENABLED

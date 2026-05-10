@@ -1,9 +1,9 @@
 [Unit]
-Description=client.linux System Updates Client
+Description=MUC System Updates Client
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/updateHUD-client.linux.amd64
+ExecStart=/usr/bin/muc-client.linux.amd64
 Restart=always
 RestartSec=10
 User=stahnma

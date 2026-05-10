@@ -86,7 +86,7 @@ Configuration is powered by [Viper](https://github.com/spf13/viper).
 export MUC_HTTP_PORT=3000
 export MUC_DB_PATH=/var/lib/muc/systems.db
 export MUC_CONSUL_TAGS=production,us-east-1
-./server --dev
+./muc-server --dev
 ```
 
 **Example `.env` file:**
@@ -137,7 +137,7 @@ The client supports automatic server discovery using multiple methods, tried in 
 Explicit configuration:
 ```bash
 export MUC_NATS_URL=nats://192.168.1.157:4222
-./client --dev
+./muc-client --dev
 ```
 
 DNS SRV record discovery (requires DNS configuration):
@@ -148,12 +148,12 @@ DNS SRV record discovery (requires DNS configuration):
 # - _nats._tcp.example.com (generic, tried last)
 # Example: _muc-server._tcp.example.com -> server.example.com:4222
 export MUC_NATS_DISCOVERY_DOMAIN=example.com
-./client
+./muc-client
 
 # Or specify a specific service name:
 export MUC_NATS_DISCOVERY_DOMAIN=example.com
 export MUC_NATS_DISCOVERY_SERVICE=muc-server
-./client
+./muc-client
 ```
 
 Consul service discovery:
@@ -162,12 +162,12 @@ Consul service discovery:
 # Service names tried in order: nats, muc-nats, muc-server
 export MUC_CONSUL_HTTP_ADDR=consul.example.com:8500
 export MUC_NATS_CONSUL_SERVICE=nats  # Optional: specify a specific service name
-./client
+./muc-client
 ```
 
 Automatic discovery (no configuration needed if DNS/Consul is set up):
 ```bash
-./client  # Will try DNS SRV, then Consul, then fallback to default
+./muc-client  # Will try DNS SRV, then Consul, then fallback to default
 ```
 
 ### Logging
@@ -181,16 +181,16 @@ The application uses structured logging with `log/slog`:
 Examples:
 ```bash
 # Default: Info level, text format
-./server
+./muc-server
 
 # Dev mode: Debug level, text format
-./server --dev
+./muc-server --dev
 
 # JSON output
-./server --json
+./muc-server --json
 
 # Dev mode with JSON output
-./server --dev --json
+./muc-server --dev --json
 ```
 
 ### Running as a Service
@@ -204,16 +204,16 @@ The client can be run as a systemd service. See `client/contrib/systemd.unit` fo
    cd server
    make run
    # Or with dev mode for debug logging:
-   ./server --dev
+   ./muc-server --dev
    ```
    The web interface will be available at `http://localhost:8080` (or your configured MUC_HTTP_PORT).
 
 2. **Run clients on each machine**:
    ```bash
    cd client
-   ./client
+   ./muc-client
    # Or with dev mode for debug logging:
-   ./client --dev
+   ./muc-client --dev
    ```
    The client will automatically connect to the NATS server and start reporting system information.
 

@@ -1,7 +1,7 @@
 .PHONY: all build clean test fmt tidy run help
 
 # Build configuration
-NAME := server
+NAME := muc-server
 GO := go
 CGO_ENABLED ?= 0
 export CGO_ENABLED
