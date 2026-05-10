@@ -1,0 +1,17 @@
+# MUC Server Configuration
+# Environment variables (MUC_* prefix) override these values.
+
+# NATS connection: "embedded" starts a built-in NATS server.
+# Set to "nats://host:port" to use an external NATS server.
+nats_url: embedded
+nats_port: 4222
+
+# BoltDB database path (relative to WorkingDirectory or absolute)
+db_path: systems.db
+
+# HTTP listen port for the web dashboard
+http_port: 8080
+
+# Consul service registration (leave default to disable if Consul isn't running)
+# consul_url: http://localhost:8500
+# consul_tags: muc,monitoring

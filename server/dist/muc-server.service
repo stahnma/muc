@@ -1,0 +1,23 @@
+[Unit]
+Description=My Update Center Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=muc
+Group=muc
+ExecStart=/usr/bin/muc-server
+Restart=on-failure
+RestartSec=5
+StateDirectory=muc
+ConfigurationDirectory=muc
+WorkingDirectory=/var/lib/muc
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/muc
+
+[Install]
+WantedBy=multi-user.target
