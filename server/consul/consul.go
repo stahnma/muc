@@ -56,7 +56,7 @@ func Register(consulURL, httpPort string, natsPort int, tags []string) (deregist
 	if err := client.Agent().ServiceRegister(httpRegistration); err != nil {
 		return nil, fmt.Errorf("registering HTTP service with consul: %w", err)
 	}
-	slog.Info("Registered HTTP service with Consul", "service_id", httpServiceID, "consul_url", consulURL, "port", port)
+	slog.Info("Registered HTTP service with Consul", "service_id", httpServiceID, "consul_url", consulURL, "port", port, "tags", tags)
 
 	// Register the NATS service
 	natsRegistration := &consulapi.AgentServiceRegistration{
@@ -77,7 +77,7 @@ func Register(consulURL, httpPort string, natsPort int, tags []string) (deregist
 		client.Agent().ServiceDeregister(httpServiceID)
 		return nil, fmt.Errorf("registering NATS service with consul: %w", err)
 	}
-	slog.Info("Registered NATS service with Consul", "service_id", natsServiceID, "consul_url", consulURL, "port", natsPort)
+	slog.Info("Registered NATS service with Consul", "service_id", natsServiceID, "consul_url", consulURL, "port", natsPort, "tags", tags)
 
 	return func() {
 		for _, id := range []string{httpServiceID, natsServiceID} {
