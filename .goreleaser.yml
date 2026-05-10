@@ -35,19 +35,20 @@ builds:
 
 archives:
   - id: muc-server
-    builds:
+    ids:
       - muc-server
     name_template: "muc-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
   - id: muc-client
-    builds:
+    ids:
       - muc-client
     name_template: "muc-client_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 nfpms:
   - id: muc-server
-    builds:
+    ids:
       - muc-server
     package_name: muc-server
+    maintainer: Michael Stahnke <stahnma@gmail.com>
     vendor: Michael Stahnke
     homepage: https://github.com/stahnma/updateHUD
     description: "My Update Center - server component"
@@ -67,9 +68,10 @@ nfpms:
       preremove: server/dist/preremove.sh
 
   - id: muc-client
-    builds:
+    ids:
       - muc-client
     package_name: muc-client
+    maintainer: Michael Stahnke <stahnma@gmail.com>
     vendor: Michael Stahnke
     homepage: https://github.com/stahnma/updateHUD
     description: "My Update Center - client agent"
