@@ -22,8 +22,11 @@ type BboltStorage struct {
 }
 
 func NewBboltStorage(dbPath string) (*BboltStorage, error) {
-	db, err := bolt.Open(dbPath, 0666, nil)
+	db, err := bolt.Open(dbPath, 0666, &bolt.Options{Timeout: 2 * time.Second})
 	if err != nil {
+		if err.Error() == "timeout" {
+			return nil, fmt.Errorf("database %q is locked — is another instance already running?", dbPath)
+		}
 		return nil, err
 	}
 
