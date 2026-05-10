@@ -9,6 +9,7 @@ type System struct {
 	UpdatesAvailable    bool     `json:"updates_available"`
 	UpdateStatusUnknown bool     `json:"update_status_unknown"`
 	LastSeen            string   `json:"last_seen"`
+	ClientVersion       string   `json:"client_version"`
 	PendingUpdates      []Update `json:"pending_updates"`
 }
 

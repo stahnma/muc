@@ -19,6 +19,8 @@ import (
 	"github.com/stahnma/muc/client/updates"
 )
 
+var Version = "dev"
+
 // getEnv gets an environment variable or returns a default value
 func getEnv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
@@ -37,6 +39,7 @@ type System struct {
 	UpdateStatusUnknown bool             `json:"update_status_unknown"`
 	PendingUpdates      []updates.Update `json:"pending_updates"`
 	Timestamp           string           `json:"timestamp"`
+	ClientVersion       string           `json:"client_version"`
 }
 
 // Collects all system data to prepare for publishing
@@ -49,6 +52,7 @@ func collectSystemData() (System, error) {
 		return system, err
 	}
 	system.Hostname = hostname
+	system.ClientVersion = Version
 
 	// Architecture
 	arch, err := exec.Command("uname", "-m").Output()

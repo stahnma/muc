@@ -591,6 +591,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                 `;
                 
+                const clientVersionHTML = data.client_version
+                    ? `<p style="margin: 4px 0 12px; font-size: 13px; color: var(--text-secondary);">Client version: ${escapeHtml(data.client_version)}</p>`
+                    : '';
+
                 if (data.pending_updates && data.pending_updates.length > 0) {
                     const updatesList = data.pending_updates
                         .map(
@@ -604,6 +608,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         .join("");
                     detailsHTML = `
                         <h3>Pending Updates for ${escapeHtml(data.hostname)}</h3>
+                        ${clientVersionHTML}
                         <table class="updates-table">
                             <thead>
                                 <tr>
@@ -621,12 +626,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (data.update_status_unknown) {
                     detailsHTML = `
                         <h3>Update status unknown for ${escapeHtml(data.hostname)}</h3>
+                        ${clientVersionHTML}
                         <p>No supported package manager was detected on this system. The update status cannot be determined.</p>
                         ${deleteButtonHTML}
                     `;
                 } else {
                     detailsHTML = `
                         <h3>No pending updates for ${escapeHtml(data.hostname)}</h3>
+                        ${clientVersionHTML}
                         ${deleteButtonHTML}
                     `;
                 }
