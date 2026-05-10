@@ -1,0 +1,99 @@
+version: 2
+
+builds:
+  - id: muc-server
+    dir: server
+    binary: muc-server
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    ldflags:
+      - -X main.Version={{.Version}}
+
+  - id: muc-client
+    dir: client
+    binary: muc-client
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    ignore:
+      - goos: darwin
+        goarch: arm
+    ldflags:
+      - -X main.Version={{.Version}}
+
+archives:
+  - id: muc-server
+    builds:
+      - muc-server
+    name_template: "muc-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: muc-client
+    builds:
+      - muc-client
+    name_template: "muc-client_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+nfpms:
+  - id: muc-server
+    builds:
+      - muc-server
+    package_name: muc-server
+    vendor: Michael Stahnke
+    homepage: https://github.com/stahnma/updateHUD
+    description: "My Update Center - server component"
+    license: MIT
+    formats:
+      - rpm
+      - deb
+    contents:
+      - src: server/dist/muc-server.service
+        dst: /usr/lib/systemd/system/muc-server.service
+      - src: server/dist/config.yml
+        dst: /etc/muc/config.yml
+        type: config|noreplace
+    scripts:
+      preinstall: server/dist/preinstall.sh
+      postinstall: server/dist/postinstall.sh
+      preremove: server/dist/preremove.sh
+
+  - id: muc-client
+    builds:
+      - muc-client
+    package_name: muc-client
+    vendor: Michael Stahnke
+    homepage: https://github.com/stahnma/updateHUD
+    description: "My Update Center - client agent"
+    license: MIT
+    formats:
+      - rpm
+      - deb
+    contents:
+      - src: client/dist/muc-client.service
+        dst: /usr/lib/systemd/system/muc-client.service
+      - src: client/dist/client.yml
+        dst: /etc/muc/client.yml
+        type: config|noreplace
+    scripts:
+      preinstall: client/dist/preinstall.sh
+      postinstall: client/dist/postinstall.sh
+      preremove: client/dist/preremove.sh
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
