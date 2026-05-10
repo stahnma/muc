@@ -21,10 +21,22 @@ func getDnfUpdates() UpdateResult {
 	}
 
 	debugLog("Checking for dnf updates...")
-	out, err := exec.Command("/usr/bin/dnf", "check-update").Output()
+	out, err := exec.Command("/usr/bin/dnf", "check-update", "--setopt=skip_if_unavailable=True").Output()
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() != 100 {
-			slog.Error("Error checking updates with dnf", "error", err)
+		if exitError, ok := err.(*exec.ExitError); ok {
+			if exitError.ExitCode() != 100 {
+				slog.Error("Error checking updates with dnf", "error", err, "exitCode", exitError.ExitCode())
+				return UpdateResult{
+					Updates:         updates,
+					ManagerDetected: false,
+				}
+			}
+		} else {
+			slog.Error("Error running dnf", "error", err)
+			return UpdateResult{
+				Updates:         updates,
+				ManagerDetected: false,
+			}
 		}
 	}
 

@@ -31,8 +31,20 @@ func getYumUpdates() UpdateResult {
 
 	out, err := exec.Command("/usr/bin/yum", "check-update").Output()
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() != 100 {
-			slog.Error("Error checking updates with yum", "error", err)
+		if exitError, ok := err.(*exec.ExitError); ok {
+			if exitError.ExitCode() != 100 {
+				slog.Error("Error checking updates with yum", "error", err, "exitCode", exitError.ExitCode())
+				return UpdateResult{
+					Updates:         updates,
+					ManagerDetected: false,
+				}
+			}
+		} else {
+			slog.Error("Error running yum", "error", err)
+			return UpdateResult{
+				Updates:         updates,
+				ManagerDetected: false,
+			}
 		}
 	}
 
