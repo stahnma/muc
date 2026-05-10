@@ -1,0 +1,8 @@
+# MUC Client Configuration (optional)
+# If this file is absent, the client uses discovery (DNS/Consul) or MUC_NATS_URL env var.
+
+# Explicit NATS server URL (overrides discovery)
+# nats_url: nats://muc-server.local:4222
+
+# NATS port (used with DNS discovery if nats_url is not set)
+# nats_port: 4222

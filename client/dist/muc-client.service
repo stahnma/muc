@@ -1,0 +1,19 @@
+[Unit]
+Description=My Update Center Client
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=muc
+Group=muc
+ExecStart=/usr/bin/muc-client
+Restart=always
+RestartSec=30
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
