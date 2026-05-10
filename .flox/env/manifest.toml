@@ -1,11 +1,3 @@
-## Flox Environment Manifest -----------------------------------------
-##
-##   _Everything_ you need to know about the _manifest_ is here:
-##
-##               https://flox.dev/docs/concepts/manifest
-##
-## -------------------------------------------------------------------
-# Flox manifest version managed by Flox CLI
 schema-version = "1.10.0"
 
 
@@ -19,6 +11,7 @@ go.pkg-path = "go"
 gnumake.pkg-path = "gnumake"
 gnumake.outputs = "all"
 ack.pkg-path = "ack"
+goreleaser.pkg-path = "goreleaser"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 
