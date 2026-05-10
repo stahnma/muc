@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"io/fs"
@@ -138,7 +139,7 @@ func (m *wsConnectionManager) broadcast(update interface{}) {
 	metrics.WebSocketMessagesBroadcast.Inc()
 }
 
-func StartWebServer(store storage.Storage, port string) {
+func StartWebServer(store storage.Storage, port string, version string) {
 	r := mux.NewRouter()
 	connManager := newWSConnectionManager()
 
@@ -171,7 +172,7 @@ func StartWebServer(store storage.Storage, port string) {
 	r.HandleFunc("/api/systems/{hostname}", api.DeleteSystemHandler(store)).Methods("DELETE")
 
 	// API documentation endpoint
-	r.HandleFunc("/apidoc", apiDocsHandler)
+	r.HandleFunc("/apidoc", apiDocsHandler(version))
 
 	// Serve the main page from embedded filesystem
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +182,7 @@ func StartWebServer(store storage.Storage, port string) {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+		data = bytes.ReplaceAll(data, []byte("{{VERSION}}"), []byte(version))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(data)
 	})
@@ -287,13 +289,16 @@ func StartWebServer(store storage.Storage, port string) {
 }
 
 // apiDocsHandler serves the API documentation page
-func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
-	data, err := templateFiles.ReadFile("templates/apidoc.html")
-	if err != nil {
-		slog.Error("Failed to read apidoc.html", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
+func apiDocsHandler(version string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := templateFiles.ReadFile("templates/apidoc.html")
+		if err != nil {
+			slog.Error("Failed to read apidoc.html", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		data = bytes.ReplaceAll(data, []byte("{{VERSION}}"), []byte(version))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(data)
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
 }

@@ -64,7 +64,7 @@ func main() {
 
 	// Start the web server
 	slog.Info("Starting web server...")
-	go web.StartWebServer(store, config.HTTPPort)
+	go web.StartWebServer(store, config.HTTPPort, Version)
 
 	// Register with Consul
 	deregisterConsul, err := consul.Register(config.ConsulURL, config.HTTPPort, config.NATSPort, config.ConsulTags)
