@@ -27,7 +27,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	os.Chdir(tmp)
 	defer os.Chdir(orig)
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.NATSURL != "embedded" {
 		t.Errorf("NATSURL = %q, want %q", cfg.NATSURL, "embedded")
@@ -63,7 +63,7 @@ func TestLoadConfig_EnvVarsOverrideDefaults(t *testing.T) {
 	t.Setenv("MUC_CONSUL_TAGS", "prod,us-east-1")
 	t.Setenv("MUC_NATS_PORT", "5222")
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.HTTPPort != "9090" {
 		t.Errorf("HTTPPort = %q, want %q", cfg.HTTPPort, "9090")
@@ -100,7 +100,7 @@ consul_tags: staging,eu-west-1
 `
 	os.WriteFile(filepath.Join(tmp, "config.yml"), []byte(yamlContent), 0644)
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.NATSURL != "nats://remote:4222" {
 		t.Errorf("NATSURL = %q, want %q", cfg.NATSURL, "nats://remote:4222")
@@ -133,7 +133,7 @@ func TestLoadConfig_DotEnvWithExportPrefix(t *testing.T) {
 	envContent := "export MUC_HTTP_PORT=8111\nexport MUC_CONSUL_TAGS=caddy\n"
 	os.WriteFile(filepath.Join(tmp, ".env"), []byte(envContent), 0644)
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.HTTPPort != "8111" {
 		t.Errorf("HTTPPort = %q, want %q", cfg.HTTPPort, "8111")
@@ -154,7 +154,7 @@ func TestLoadConfig_DotEnvWithoutExportPrefix(t *testing.T) {
 	envContent := "MUC_HTTP_PORT=7777\nMUC_CONSUL_TAGS=web,api\n"
 	os.WriteFile(filepath.Join(tmp, ".env"), []byte(envContent), 0644)
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.HTTPPort != "7777" {
 		t.Errorf("HTTPPort = %q, want %q", cfg.HTTPPort, "7777")
@@ -177,7 +177,7 @@ func TestLoadConfig_EnvOverridesDotEnv(t *testing.T) {
 
 	t.Setenv("MUC_HTTP_PORT", "9999")
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.HTTPPort != "9999" {
 		t.Errorf("HTTPPort = %q, want %q (env should override .env)", cfg.HTTPPort, "9999")
@@ -194,7 +194,7 @@ func TestLoadConfig_ConsulTagsSingleValue(t *testing.T) {
 
 	t.Setenv("MUC_CONSUL_TAGS", "caddy")
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if len(cfg.ConsulTags) != 1 || cfg.ConsulTags[0] != "caddy" {
 		t.Errorf("ConsulTags = %v, want [caddy]", cfg.ConsulTags)
@@ -209,7 +209,7 @@ func TestLoadConfig_ConsulTagsEmpty(t *testing.T) {
 	os.Chdir(tmp)
 	defer os.Chdir(orig)
 
-	cfg := LoadConfig()
+	cfg := LoadConfigFromPaths([]string{"."})
 
 	if cfg.ConsulTags != nil {
 		t.Errorf("ConsulTags = %v, want nil", cfg.ConsulTags)

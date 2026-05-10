@@ -19,6 +19,10 @@ type Config struct {
 }
 
 func LoadConfig() Config {
+	return LoadConfigFromPaths([]string{".", "/etc/muc"})
+}
+
+func LoadConfigFromPaths(configPaths []string) Config {
 	v := viper.New()
 
 	// Set defaults
@@ -32,8 +36,9 @@ func LoadConfig() Config {
 	// Read from config.yml if present
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
-	v.AddConfigPath(".")
-	v.AddConfigPath("/etc/muc")
+	for _, p := range configPaths {
+		v.AddConfigPath(p)
+	}
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			slog.Warn("Error reading config file", "error", err)
