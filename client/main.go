@@ -272,7 +272,7 @@ func getIPAddress() (string, error) {
 }
 
 func main() {
-	// Setup logger with CLI flags
+	// Setup logger with CLI flags (also handles --version)
 	_ = setupLogger()
 
 	// Load optional config file (/etc/muc/client.yml or ./client.yml)
