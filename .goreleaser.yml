@@ -67,6 +67,7 @@ nfpms:
       preinstall: server/dist/preinstall.sh
       postinstall: server/dist/postinstall.sh
       preremove: server/dist/preremove.sh
+      postremove: server/dist/postremove.sh
 
   - id: muc-client
     ids:
@@ -90,6 +91,7 @@ nfpms:
       preinstall: client/dist/preinstall.sh
       postinstall: client/dist/postinstall.sh
       preremove: client/dist/preremove.sh
+      postremove: client/dist/postremove.sh
 
 checksum:
   name_template: "checksums.txt"
