@@ -10,6 +10,7 @@ Group=muc
 ExecStart=/usr/bin/muc-client
 Restart=always
 RestartSec=30
+StateDirectory=muc
 ProtectSystem=strict
 ProtectHome=true
 NoNewPrivileges=true
