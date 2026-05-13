@@ -391,7 +391,7 @@ func main() {
 	}
 
 	// Run the client as a long-running daemon
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	// Add a separate ticker for connection health checks
