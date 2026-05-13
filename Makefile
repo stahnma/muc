@@ -82,6 +82,7 @@ clean:
 	$(MAKE) -C client clean
 	$(MAKE) -C server clean
 	rm -f $(NAME)
+	rm -rf dist/
 
 # Installation
 install: build
