@@ -348,6 +348,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (osLower.includes('debian')) {
             return '<img class="os-icon" src="/static/images/debian-48.png" alt="Debian" width="20" height="20">';
         }
+
+        // Pop!_OS - check before Ubuntu since Pop reports PRETTY_NAME with "Pop!_OS"
+        if (osLower.includes('pop!_os') || osLower.includes('pop_os') || osLower.includes('pop-os') || osLower.includes('pop os')) {
+            return '<img class="os-icon" src="/static/images/pop-os-48.png" alt="Pop!_OS" width="20" height="20">';
+        }
         
         // Fedora
         if (osLower.includes('fedora')) {
