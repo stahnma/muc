@@ -5,3 +5,4 @@ upc
 ups
 systems.db
 /dist/
+.env
