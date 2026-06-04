@@ -364,21 +364,36 @@ document.addEventListener("DOMContentLoaded", () => {
             return '<img class="os-icon" src="/static/images/red-hat-48.png" alt="Red Hat" width="20" height="20">';
         }
         
-        // Ubuntu - use generic Linux icon
+        // Ubuntu
         if (osLower.includes('ubuntu')) {
-            return '<img class="os-icon" src="/static/images/linux-48.png" alt="Ubuntu" width="20" height="20">';
+            return '<img class="os-icon" src="/static/images/ubuntu-48.png" alt="Ubuntu" width="20" height="20">';
         }
-        
-        // SUSE / openSUSE - use generic Linux icon
+
+        // SUSE / openSUSE
         if (osLower.includes('suse') || osLower.includes('opensuse')) {
-            return '<img class="os-icon" src="/static/images/linux-48.png" alt="SUSE" width="20" height="20">';
+            return '<img class="os-icon" src="/static/images/suse-48.png" alt="SUSE" width="20" height="20">';
         }
-        
-        // Rocky Linux - use generic Linux icon
+
+        // Rocky Linux
         if (osLower.includes('rocky')) {
-            return '<img class="os-icon" src="/static/images/linux-48.png" alt="Rocky Linux" width="20" height="20">';
+            return '<img class="os-icon" src="/static/images/rocky-48.png" alt="Rocky Linux" width="20" height="20">';
         }
-        
+
+        // CentOS - check before generic 'centos stream' etc.
+        if (osLower.includes('centos')) {
+            return '<img class="os-icon" src="/static/images/centos-48.png" alt="CentOS" width="20" height="20">';
+        }
+
+        // Arch Linux
+        if (osLower.includes('arch')) {
+            return '<img class="os-icon" src="/static/images/arch-48.png" alt="Arch Linux" width="20" height="20">';
+        }
+
+        // Gentoo
+        if (osLower.includes('gentoo')) {
+            return '<img class="os-icon" src="/static/images/gentoo-48.png" alt="Gentoo" width="20" height="20">';
+        }
+
         // NixOS
         if (osLower.includes('nixos')) {
             return '<img class="os-icon" src="/static/images/nixos.png" alt="NixOS" width="20" height="20">';
