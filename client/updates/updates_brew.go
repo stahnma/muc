@@ -25,10 +25,11 @@ func getBrewUpdates() UpdateResult {
 	out, err := exec.Command("brew", "outdated").Output()
 	if err != nil {
 		slog.Error("Error checking updates with brew", "error", err)
-		// Still mark as detected since brew exists, we just couldn't get updates
+		// brew exists but the check failed; we don't actually know the status.
 		return UpdateResult{
 			Updates:         updates,
 			ManagerDetected: true,
+			CheckFailed:     true,
 		}
 	}
 

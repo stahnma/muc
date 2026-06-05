@@ -114,9 +114,11 @@ func getNixosUpdates() UpdateResult {
 		// Exit code might be non-zero even if command works, but log it
 		if len(out) == 0 {
 			debugLog("Error running nixos-rebuild dry-run with no output", "error", err)
+			// NixOS detected but the rebuild produced nothing usable; status unknown.
 			return UpdateResult{
 				Updates:         updates,
 				ManagerDetected: true,
+				CheckFailed:     true,
 			}
 		}
 		// Continue parsing even if there was an error code

@@ -111,15 +111,7 @@ func collectSystemData() (System, error) {
 	metrics.UpdateCheckDuration.WithLabelValues(packageManager).Observe(updateDuration)
 
 	system.PendingUpdates = updateResult.Updates
-	system.UpdateStatusUnknown = !updateResult.ManagerDetected
-	if updateResult.ManagerDetected {
-		// Only set UpdatesAvailable if we actually detected a package manager
-		system.UpdatesAvailable = len(system.PendingUpdates) > 0
-	} else {
-		// If no package manager was detected, don't claim updates are available
-		// but mark status as unknown
-		system.UpdatesAvailable = false
-	}
+	system.UpdatesAvailable, system.UpdateStatusUnknown = updateResult.Status()
 
 	// Timestamp
 	system.Timestamp = time.Now().Format(time.RFC3339)

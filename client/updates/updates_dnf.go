@@ -53,9 +53,12 @@ func getDnfUpdates() UpdateResult {
 		out, err = runDnfCheckUpdate("check-update")
 	}
 	if err != nil {
+		// dnf is installed but check-update failed to run (e.g. read-only
+		// cache/log dir under a hardened sandbox). Report unknown, not "up to date".
 		return UpdateResult{
 			Updates:         updates,
 			ManagerDetected: true,
+			CheckFailed:     true,
 		}
 	}
 

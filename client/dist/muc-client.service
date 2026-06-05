@@ -11,11 +11,15 @@ ExecStart=/usr/bin/muc-client
 Restart=always
 RestartSec=30
 StateDirectory=muc
-ProtectSystem=strict
+# The client shells out to the system package manager (dnf/apt/yum) to check for
+# updates. Those tools must write to /var/cache, /var/lib and /var/log, so
+# ProtectSystem=strict (which makes the whole FS read-only) breaks update
+# detection. Use 'full' instead: /usr, /boot, /efi and /etc stay read-only while
+# the package manager can still refresh its metadata.
+ProtectSystem=full
 ProtectHome=true
 NoNewPrivileges=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/muc
 
 [Install]
 WantedBy=multi-user.target

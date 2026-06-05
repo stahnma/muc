@@ -22,10 +22,11 @@ func getAptUpdates() UpdateResult {
 	out, err := exec.Command("/usr/bin/apt", "list", "--upgradable").Output()
 	if err != nil {
 		slog.Error("Error checking updates with apt", "error", err)
-		// Still mark as detected since apt exists, we just couldn't get updates
+		// apt exists but the check failed; we don't actually know the status.
 		return UpdateResult{
 			Updates:         updates,
 			ManagerDetected: true,
+			CheckFailed:     true,
 		}
 	}
 

@@ -33,17 +33,20 @@ func getYumUpdates() UpdateResult {
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() != 100 {
+				// yum exists but check-update failed; status unknown, not "up to date".
 				slog.Error("Error checking updates with yum", "error", err, "exitCode", exitError.ExitCode())
 				return UpdateResult{
 					Updates:         updates,
-					ManagerDetected: false,
+					ManagerDetected: true,
+					CheckFailed:     true,
 				}
 			}
 		} else {
 			slog.Error("Error running yum", "error", err)
 			return UpdateResult{
 				Updates:         updates,
-				ManagerDetected: false,
+				ManagerDetected: true,
+				CheckFailed:     true,
 			}
 		}
 	}
