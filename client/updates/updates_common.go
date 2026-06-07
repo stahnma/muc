@@ -83,6 +83,13 @@ func getLinuxUpdates() UpdateResult {
 		allUpdates = append(allUpdates, yumResult.Updates...)
 	}
 
+	zypperResult := getZypperUpdates()
+	if zypperResult.ManagerDetected {
+		managerDetected = true
+		checkFailed = checkFailed || zypperResult.CheckFailed
+		allUpdates = append(allUpdates, zypperResult.Updates...)
+	}
+
 	nixosResult := getNixosUpdates()
 	if nixosResult.ManagerDetected {
 		managerDetected = true
