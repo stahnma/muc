@@ -29,7 +29,10 @@ func getYumUpdates() UpdateResult {
 		}
 	}
 
-	out, err := exec.Command("/usr/bin/yum", "check-update").Output()
+	// Force a metadata refresh when the cache is stale (see dnfMetadataExpire)
+	// so we don't under-report freshly-published updates from cached metadata.
+	out, err := exec.Command("/usr/bin/yum", "check-update",
+		"--setopt=metadata_expire="+dnfMetadataExpire).Output()
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() != 100 {

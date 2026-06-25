@@ -9,6 +9,28 @@ import (
 	"strings"
 )
 
+// dnfMetadataExpire bounds how stale dnf's cached repo metadata may be before a
+// check-update forces a re-download. The client polls every few minutes, so we
+// must NOT refresh on every poll (that would hammer mirrors hundreds of times a
+// day). Instead we shorten dnf's metadata_expire: dnf re-syncs only when the
+// cache is older than this, otherwise it answers from cache for free.
+//
+// Without this, the client inherits each repo's default expiry (6h+ for Fedora's
+// "updates" repo, days for others), so a freshly-published update stays invisible
+// on the dashboard until the cache happens to expire — the symptom that surfaced
+// as "dashboard shows 2 updates, `dnf update` shows 3".
+const dnfMetadataExpire = "1h"
+
+// dnfCheckUpdateArgs returns the arguments for the primary dnf check-update
+// invocation, including the short metadata_expire that keeps results fresh.
+func dnfCheckUpdateArgs() []string {
+	return []string{
+		"check-update",
+		"--setopt=skip_if_unavailable=True",
+		"--setopt=metadata_expire=" + dnfMetadataExpire,
+	}
+}
+
 // runDnfCheckUpdate runs dnf check-update with the given arguments and returns
 // stdout, or an error if the command fails with a non-100 exit code.
 // Exit code 100 means updates are available and is treated as success.
@@ -46,10 +68,12 @@ func getDnfUpdates() UpdateResult {
 
 	debugLog("Checking for dnf updates...")
 
-	// Try with --setopt first, fall back to plain check-update if it fails
-	out, err := runDnfCheckUpdate("check-update", "--setopt=skip_if_unavailable=True")
+	// Try with --setopt first, fall back to plain check-update if it fails.
+	// The primary call forces a metadata refresh when the cache is stale so we
+	// don't under-report freshly-published updates.
+	out, err := runDnfCheckUpdate(dnfCheckUpdateArgs()...)
 	if err != nil {
-		debugLog("Retrying dnf check-update without --setopt flag")
+		debugLog("Retrying dnf check-update without --setopt flags")
 		out, err = runDnfCheckUpdate("check-update")
 	}
 	if err != nil {
