@@ -12,6 +12,7 @@ func clearMUCEnv(t *testing.T) {
 	for _, key := range []string{
 		"MUC_NATS_URL", "MUC_NATS_PORT", "MUC_DB_PATH",
 		"MUC_HTTP_PORT", "MUC_CONSUL_URL", "MUC_CONSUL_TAGS",
+		"MUC_CONSUL_NATS_TAGS",
 	} {
 		t.Setenv(key, "")
 		os.Unsetenv(key)
@@ -213,5 +214,54 @@ func TestLoadConfig_ConsulTagsEmpty(t *testing.T) {
 
 	if cfg.ConsulTags != nil {
 		t.Errorf("ConsulTags = %v, want nil", cfg.ConsulTags)
+	}
+	if cfg.ConsulNATSTags != nil {
+		t.Errorf("ConsulNATSTags = %v, want nil", cfg.ConsulNATSTags)
+	}
+}
+
+// When only consul_tags is set, the NATS service inherits the same tags.
+func TestLoadConfig_ConsulNATSTagsFallback(t *testing.T) {
+	clearMUCEnv(t)
+
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(orig)
+
+	t.Setenv("MUC_CONSUL_TAGS", "prod,us-east-1")
+
+	cfg := LoadConfigFromPaths([]string{"."})
+
+	want := []string{"prod", "us-east-1"}
+	if len(cfg.ConsulNATSTags) != len(want) {
+		t.Fatalf("ConsulNATSTags = %v, want %v", cfg.ConsulNATSTags, want)
+	}
+	for i, tag := range want {
+		if cfg.ConsulNATSTags[i] != tag {
+			t.Errorf("ConsulNATSTags[%d] = %q, want %q", i, cfg.ConsulNATSTags[i], tag)
+		}
+	}
+}
+
+// consul_nats_tags overrides the fallback and is independent of consul_tags.
+func TestLoadConfig_ConsulNATSTagsOverride(t *testing.T) {
+	clearMUCEnv(t)
+
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(orig)
+
+	t.Setenv("MUC_CONSUL_TAGS", "web,api")
+	t.Setenv("MUC_CONSUL_NATS_TAGS", "nats,messaging")
+
+	cfg := LoadConfigFromPaths([]string{"."})
+
+	if len(cfg.ConsulTags) != 2 || cfg.ConsulTags[0] != "web" || cfg.ConsulTags[1] != "api" {
+		t.Errorf("ConsulTags = %v, want [web api]", cfg.ConsulTags)
+	}
+	if len(cfg.ConsulNATSTags) != 2 || cfg.ConsulNATSTags[0] != "nats" || cfg.ConsulNATSTags[1] != "messaging" {
+		t.Errorf("ConsulNATSTags = %v, want [nats messaging]", cfg.ConsulNATSTags)
 	}
 }

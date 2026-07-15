@@ -75,7 +75,8 @@ Configuration is powered by [Viper](https://github.com/spf13/viper).
 | `db_path` | `MUC_DB_PATH` | `systems.db` | Path to BoltDB database file |
 | `http_port` | `MUC_HTTP_PORT` | `8080` | Web server port |
 | `consul_url` | `MUC_CONSUL_URL` | `http://localhost:8500` | Consul agent URL for service registration |
-| `consul_tags` | `MUC_CONSUL_TAGS` | (none) | Comma-separated Consul service tags |
+| `consul_tags` | `MUC_CONSUL_TAGS` | (none) | Comma-separated Consul tags for the HTTP (`muc`) service |
+| `consul_nats_tags` | `MUC_CONSUL_NATS_TAGS` | (falls back to `consul_tags`) | Comma-separated Consul tags for the NATS (`muc-nats`) service |
 
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
@@ -107,6 +108,10 @@ consul_url: http://consul.local:8500
 consul_tags:
   - production
   - us-east-1
+# Optional: tag the muc-nats service differently. Omit to reuse consul_tags.
+consul_nats_tags:
+  - production
+  - nats
 ```
 
 ### Client Configuration

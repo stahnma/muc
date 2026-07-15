@@ -14,4 +14,8 @@ http_port: 8080
 
 # Consul service registration (leave default to disable if Consul isn't running)
 # consul_url: http://localhost:8500
+# consul_tags applies to the HTTP ("muc") service.
 # consul_tags: muc,monitoring
+# consul_nats_tags applies to the NATS ("muc-nats") service.
+# Leave unset to reuse consul_tags for both services.
+# consul_nats_tags: muc-nats,monitoring

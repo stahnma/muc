@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	NATSURL    string
-	NATSPort   int
-	DBPath     string
-	HTTPPort   string
-	ConsulURL  string
-	ConsulTags []string
+	NATSURL        string
+	NATSPort       int
+	DBPath         string
+	HTTPPort       string
+	ConsulURL      string
+	ConsulTags     []string
+	ConsulNATSTags []string
 }
 
 func LoadConfig() Config {
@@ -32,6 +33,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 	v.SetDefault("http_port", "8080")
 	v.SetDefault("consul_url", "http://localhost:8500")
 	v.SetDefault("consul_tags", "")
+	v.SetDefault("consul_nats_tags", "")
 
 	// Read from config.yml if present
 	v.SetConfigName("config")
@@ -63,24 +65,23 @@ func LoadConfigFromPaths(configPaths []string) Config {
 	v.SetEnvPrefix("MUC")
 	v.AutomaticEnv()
 
-	// Parse consul_tags: comma-separated string from env/dotenv, or list from YAML
-	var consulTags []string
-	if tagsVal := v.GetString("consul_tags"); tagsVal != "" {
-		for _, tag := range strings.Split(tagsVal, ",") {
-			tag = strings.TrimSpace(tag)
-			if tag != "" {
-				consulTags = append(consulTags, tag)
-			}
-		}
+	// Parse tags: comma-separated string from env/dotenv, or list from YAML.
+	// consul_tags applies to the HTTP ("muc") service; consul_nats_tags applies
+	// to the NATS ("muc-nats") service and falls back to consul_tags when unset.
+	consulTags := parseConsulTags(v.GetString("consul_tags"))
+	consulNATSTags := parseConsulTags(v.GetString("consul_nats_tags"))
+	if consulNATSTags == nil {
+		consulNATSTags = consulTags
 	}
 
 	config := Config{
-		NATSURL:    v.GetString("nats_url"),
-		NATSPort:   v.GetInt("nats_port"),
-		DBPath:     v.GetString("db_path"),
-		HTTPPort:   v.GetString("http_port"),
-		ConsulURL:  v.GetString("consul_url"),
-		ConsulTags: consulTags,
+		NATSURL:        v.GetString("nats_url"),
+		NATSPort:       v.GetInt("nats_port"),
+		DBPath:         v.GetString("db_path"),
+		HTTPPort:       v.GetString("http_port"),
+		ConsulURL:      v.GetString("consul_url"),
+		ConsulTags:     consulTags,
+		ConsulNATSTags: consulNATSTags,
 	}
 
 	slog.Info("Loaded configuration",
@@ -90,6 +91,20 @@ func LoadConfigFromPaths(configPaths []string) Config {
 		"http_port", config.HTTPPort,
 		"consul_url", config.ConsulURL,
 		"consul_tags", config.ConsulTags,
+		"consul_nats_tags", config.ConsulNATSTags,
 	)
 	return config
+}
+
+// parseConsulTags splits a comma-separated tag string into a trimmed slice,
+// dropping empty entries. Returns nil when no tags are present.
+func parseConsulTags(tagsVal string) []string {
+	var tags []string
+	for _, tag := range strings.Split(tagsVal, ",") {
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
 }
