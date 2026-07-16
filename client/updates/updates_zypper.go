@@ -50,6 +50,15 @@ func getZypperUpdates() UpdateResult {
 
 	debugLog("Checking for zypper updates...")
 
+	// zypper computes list-updates against its *cached* repository metadata and
+	// only refreshes that cache when invoked as root. Unlike Fedora
+	// (dnf-makecache.timer) or Debian (apt-daily.timer), openSUSE ships no
+	// periodic refresh, so a cold or stale cache makes list-updates silently
+	// under-report — typically as zero updates on a machine that is hundreds of
+	// updates behind. Force a refresh when we can. refreshed records whether we
+	// managed to; it gates how we interpret an empty result below.
+	refreshed := refreshZypperMetadata()
+
 	// --non-interactive avoids any prompts; --xmlout gives machine-readable
 	// output. zypper exits 0 even when updates are available, so any non-zero
 	// exit is a genuine failure to query — report unknown, not "up to date".
@@ -73,17 +82,48 @@ func getZypperUpdates() UpdateResult {
 
 	debugLog("Raw zypper output", "output", string(out))
 
-	var stream zypperStream
-	if err := xml.Unmarshal(out, &stream); err != nil {
+	updates, err = parseZypperUpdates(out)
+	if err != nil {
 		// zypper ran but produced output we can't parse; status unknown.
 		slog.Error("Error parsing zypper XML output", "error", err)
 		return UpdateResult{
-			Updates:         updates,
+			Updates:         nil,
 			ManagerDetected: true,
 			CheckFailed:     true,
 		}
 	}
 
+	// If we could not refresh the metadata (running unprivileged, or the refresh
+	// failed) and the check came back empty, we cannot tell "genuinely up to
+	// date" from "stale cache we were unable to update" — report unknown rather
+	// than a confident "up to date". A non-empty result is trustworthy either
+	// way: those updates really are pending.
+	if len(updates) == 0 && !refreshed {
+		slog.Warn("zypper reported no updates but metadata could not be refreshed; reporting unknown", "euid", os.Geteuid())
+		return UpdateResult{
+			Updates:         nil,
+			ManagerDetected: true,
+			CheckFailed:     true,
+		}
+	}
+
+	debugLog("Found zypper updates", "count", len(updates))
+	return UpdateResult{
+		Updates:         updates,
+		ManagerDetected: true,
+	}
+}
+
+// parseZypperUpdates turns the --xmlout output of `zypper list-updates` into the
+// list of pending package updates, dropping non-package kinds (patches,
+// patterns, products) to match what the other package managers report.
+func parseZypperUpdates(out []byte) ([]Update, error) {
+	var stream zypperStream
+	if err := xml.Unmarshal(out, &stream); err != nil {
+		return nil, err
+	}
+
+	var updates []Update
 	for _, u := range stream.Updates {
 		// list-updates only reports packages by default, but newer zypper can
 		// include patches/patterns; keep package updates to match other managers.
@@ -97,10 +137,28 @@ func getZypperUpdates() UpdateResult {
 			Source:  u.Source.Alias,
 		})
 	}
+	return updates, nil
+}
 
-	debugLog("Found zypper updates", "count", len(updates))
-	return UpdateResult{
-		Updates:         updates,
-		ManagerDetected: true,
+// refreshZypperMetadata refreshes zypper's cached repository metadata so a
+// subsequent list-updates reflects the current repos. This requires root; when
+// running unprivileged we skip it and return false. The refresh is best-effort —
+// a failure (network, repo error, lock) is logged but not fatal, and callers
+// treat "not refreshed" as a reason to distrust an empty update list.
+func refreshZypperMetadata() bool {
+	if os.Geteuid() != 0 {
+		debugLog("Skipping zypper refresh: not running as root")
+		return false
 	}
+
+	cmd := exec.Command("/usr/bin/zypper", "--non-interactive", "refresh")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		slog.Warn("zypper refresh failed; update check may use stale metadata", "error", err, "stderr", stderr.String())
+		return false
+	}
+
+	debugLog("Refreshed zypper metadata")
+	return true
 }

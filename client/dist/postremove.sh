@@ -4,4 +4,9 @@
 if [ "$1" = "upgrade" ] || [ "$1" -ge 1 ] 2>/dev/null; then
   systemctl daemon-reload
   systemctl try-restart muc-client 2>/dev/null || true
+else
+  # Full removal: drop the zypper "run as root" override installed by postinstall.
+  rm -f /etc/systemd/system/muc-client.service.d/10-zypper-root.conf 2>/dev/null || true
+  rmdir /etc/systemd/system/muc-client.service.d 2>/dev/null || true
+  systemctl daemon-reload 2>/dev/null || true
 fi
