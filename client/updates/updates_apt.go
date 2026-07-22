@@ -19,6 +19,16 @@ func getAptUpdates() UpdateResult {
 	}
 
 	debugLog("Checking for apt updates...")
+
+	// `apt list --upgradable` reads only apt's *cached* package index
+	// (/var/lib/apt/lists) and never contacts the mirrors itself. Debian
+	// refreshes that cache with the apt-daily.timer, but that only runs about
+	// once a day and is easily disabled or skipped, so a stale cache makes the
+	// check silently under-report — typically as zero updates on a machine that
+	// is well behind. Refresh the cache first when we can. refreshed records
+	// whether we managed to; it gates how we interpret an empty result below.
+	refreshed := refreshAptMetadata()
+
 	out, err := exec.Command("/usr/bin/apt", "list", "--upgradable").Output()
 	if err != nil {
 		slog.Error("Error checking updates with apt", "error", err)
@@ -39,6 +49,33 @@ func getAptUpdates() UpdateResult {
 		debugLog("Raw apt output", "max_len", maxLen, "output", string(out[:maxLen]))
 	}
 
+	updates = parseAptUpdates(out)
+
+	// If we could not refresh the metadata (running unprivileged, or the refresh
+	// failed) and the check came back empty, we cannot tell "genuinely up to
+	// date" from "stale cache we were unable to update" — report unknown rather
+	// than a confident "up to date". A non-empty result is trustworthy either
+	// way: those updates really are pending.
+	if len(updates) == 0 && !refreshed {
+		slog.Warn("apt reported no updates but metadata could not be refreshed; reporting unknown", "euid", os.Geteuid())
+		return UpdateResult{
+			Updates:         nil,
+			ManagerDetected: true,
+			CheckFailed:     true,
+		}
+	}
+
+	debugLog("Found apt updates", "count", len(updates))
+	return UpdateResult{
+		Updates:         updates,
+		ManagerDetected: true,
+	}
+}
+
+// parseAptUpdates turns the output of `apt list --upgradable` into the list of
+// pending package updates.
+func parseAptUpdates(out []byte) []Update {
+	var updates []Update
 	lines := strings.Split(string(out), "\n")
 	for lineNum, line := range lines {
 		// Skip header lines and empty lines
@@ -89,11 +126,32 @@ func getAptUpdates() UpdateResult {
 			Source:  source,
 		})
 	}
-	debugLog("Found apt updates", "count", len(updates))
-	return UpdateResult{
-		Updates:         updates,
-		ManagerDetected: true,
+	return updates
+}
+
+// refreshAptMetadata refreshes apt's cached package index (`apt-get update`) so a
+// subsequent `apt list --upgradable` reflects the current repos. This writes to
+// root-owned /var/lib/apt/lists and so requires root; when running unprivileged
+// we skip it and return false. The refresh is best-effort — a failure (network,
+// repo error, lock) is logged but not fatal, and callers treat "not refreshed"
+// as a reason to distrust an empty update list. We use apt-get rather than apt
+// because apt warns that it "does not have a stable CLI interface".
+func refreshAptMetadata() bool {
+	if os.Geteuid() != 0 {
+		debugLog("Skipping apt refresh: not running as root")
+		return false
 	}
+
+	cmd := exec.Command("/usr/bin/apt-get", "update")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		slog.Warn("apt-get update failed; update check may use stale metadata", "error", err, "stderr", stderr.String())
+		return false
+	}
+
+	debugLog("Refreshed apt metadata")
+	return true
 }
 
 // getAptSource determines the source repository for a package
