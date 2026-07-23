@@ -15,6 +15,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/nats-io/nats.go"
 	"github.com/stahnma/muc/client/discovery"
+	"github.com/stahnma/muc/client/hostinfo"
 	"github.com/stahnma/muc/client/metrics"
 	"github.com/stahnma/muc/client/updates"
 )
@@ -40,6 +41,11 @@ type System struct {
 	PendingUpdates      []updates.Update `json:"pending_updates"`
 	Timestamp           string           `json:"timestamp"`
 	ClientVersion       string           `json:"client_version"`
+	CPUModel            string           `json:"cpu_model"`
+	CPUCores            int              `json:"cpu_cores"`
+	MemoryTotalBytes    uint64           `json:"memory_total_bytes"`
+	UptimeSeconds       uint64           `json:"uptime_seconds"`
+	RebootRequired      bool             `json:"reboot_required"`
 }
 
 // Collects all system data to prepare for publishing
@@ -112,6 +118,14 @@ func collectSystemData() (System, error) {
 
 	system.PendingUpdates = updateResult.Updates
 	system.UpdatesAvailable, system.UpdateStatusUnknown = updateResult.Status()
+
+	// Hardware, uptime, and reboot-required status (best-effort)
+	hw := hostinfo.Collect()
+	system.CPUModel = hw.CPUModel
+	system.CPUCores = hw.CPUCores
+	system.MemoryTotalBytes = hw.MemoryTotalBytes
+	system.UptimeSeconds = hw.UptimeSeconds
+	system.RebootRequired = hw.RebootRequired
 
 	// Timestamp
 	system.Timestamp = time.Now().Format(time.RFC3339)

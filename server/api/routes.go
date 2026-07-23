@@ -22,6 +22,11 @@ type SystemSummary struct {
 	UpdateStatusUnknown bool            `json:"update_status_unknown"`
 	LastSeen            string          `json:"last_seen"`
 	PendingUpdates      []models.Update `json:"pending_updates"`
+	CPUModel            string          `json:"cpu_model"`
+	CPUCores            int             `json:"cpu_cores"`
+	MemoryTotalBytes    uint64          `json:"memory_total_bytes"`
+	UptimeSeconds       uint64          `json:"uptime_seconds"`
+	RebootRequired      bool            `json:"reboot_required"`
 }
 
 // GetSystemsHandler returns a JSON list of systems with pending updates details
@@ -48,6 +53,11 @@ func GetSystemsHandler(store storage.Storage) http.HandlerFunc {
 				UpdateStatusUnknown: system.UpdateStatusUnknown,
 				LastSeen:            system.LastSeen,
 				PendingUpdates:      system.PendingUpdates,
+				CPUModel:            system.CPUModel,
+				CPUCores:            system.CPUCores,
+				MemoryTotalBytes:    system.MemoryTotalBytes,
+				UptimeSeconds:       system.UptimeSeconds,
+				RebootRequired:      system.RebootRequired,
 			})
 		}
 

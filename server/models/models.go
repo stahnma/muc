@@ -11,6 +11,11 @@ type System struct {
 	LastSeen            string   `json:"last_seen"`
 	ClientVersion       string   `json:"client_version"`
 	PendingUpdates      []Update `json:"pending_updates"`
+	CPUModel            string   `json:"cpu_model"`
+	CPUCores            int      `json:"cpu_cores"`
+	MemoryTotalBytes    uint64   `json:"memory_total_bytes"`
+	UptimeSeconds       uint64   `json:"uptime_seconds"`
+	RebootRequired      bool     `json:"reboot_required"`
 }
 
 type Update struct {

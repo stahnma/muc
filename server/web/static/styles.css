@@ -575,3 +575,62 @@ th.sortable.descending::after {
     }
 }
 
+/* Reboot-required indicator shown next to a hostname. */
+.reboot-indicator {
+    color: var(--accent-orange);
+    font-weight: 700;
+    cursor: help;
+}
+
+/* System information block inside the expanded per-host details. */
+.system-info {
+    margin-top: 16px;
+}
+
+.system-info h4 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+/* Two-column key/value grid: labels in a muted column, values in a bold
+   primary column that left-justifies (including when a long value wraps). */
+.system-info dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0 32px;
+    margin: 0;
+    max-width: 560px;
+}
+
+.system-info dt {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 8px 0;
+    align-self: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.system-info dd {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    word-break: break-word;
+    padding: 8px 0;
+    align-self: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Drop the divider under the final key/value pair. */
+.system-info dl > dt:last-of-type,
+.system-info dl > dd:last-of-type {
+    border-bottom: none;
+}
+

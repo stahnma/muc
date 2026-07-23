@@ -309,6 +309,28 @@ document.addEventListener("DOMContentLoaded", () => {
         return `about ${diffYears} year${diffYears === 1 ? '' : 's'} ago`;
     }
 
+    // Format a byte count as a human-readable RAM amount (e.g. "32 GB").
+    function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '';
+        const gib = bytes / (1024 ** 3);
+        if (gib >= 1) {
+            return `${Math.round(gib)} GB`;
+        }
+        return `${Math.round(bytes / (1024 ** 2))} MB`;
+    }
+
+    // Format an uptime in seconds as the two most significant units
+    // (e.g. "14d 3h", "3h 12m", "5m").
+    function formatUptime(seconds) {
+        if (!seconds || seconds <= 0) return '';
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${minutes}m`;
+    }
+
     function getUpdatePriority(updates) {
         if (!updates || updates.length === 0) return 'none';
         // Check for security updates
@@ -425,7 +447,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (systems.length === 0) {
             systemsTable.innerHTML = `
                 <tr>
-                    <td colspan="7" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                    <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
                         <div style="font-size: 16px; margin-bottom: 8px;">📡</div>
                         <div style="font-weight: 500; margin-bottom: 4px;">No systems have checked in yet</div>
                         <div style="font-size: 13px; opacity: 0.8;">Systems will appear here automatically as they connect</div>
@@ -436,12 +458,19 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         // Sort the systems based on the current sort order
         systems.sort((a, b) => {
-            const aValue = a[sortOrder.column] || "";
-            const bValue = b[sortOrder.column] || "";
+            const aRaw = a[sortOrder.column];
+            const bRaw = b[sortOrder.column];
+            // Numeric columns (cores, RAM, uptime) must sort numerically, not
+            // lexically ("9" vs "13").
+            if (typeof aRaw === "number" && typeof bRaw === "number") {
+                return sortOrder.ascending ? aRaw - bRaw : bRaw - aRaw;
+            }
+            const aValue = (aRaw ?? "").toString();
+            const bValue = (bRaw ?? "").toString();
             if (sortOrder.ascending) {
-                return aValue.toString().localeCompare(bValue.toString());
+                return aValue.localeCompare(bValue);
             } else {
-                return bValue.toString().localeCompare(aValue.toString());
+                return bValue.localeCompare(aValue);
             }
         });
 
@@ -457,7 +486,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${system.hostname}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
-                        <td>${escapeHtml(system.hostname)}</td>
+                        <td>${escapeHtml(system.hostname)}${system.reboot_required ? ' <span class="reboot-indicator" title="Reboot required">⟳</span>' : ''}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
@@ -473,13 +502,14 @@ document.addEventListener("DOMContentLoaded", () => {
                             </span>` :
                             `<span class="update-badge up-to-date">Up to date</span>`
                         }</td>
+                        <td>${escapeHtml(formatUptime(system.uptime_seconds))}</td>
                         <td class="last-seen-cell" data-timestamp="${escapeHtml(system.last_seen || '')}" title="${formatFullTimestamp(system.last_seen || '')}">
                             ${isStale ? '<span class="stale-indicator" title="Host has not checked in for 4+ hours">⚠️ </span>' : ''}
                             ${formatRelativeTime(system.last_seen || '')}
                         </td>
                     </tr>
                     <tr class="details-row" data-hostname="${escapeHtml(system.hostname)}" style="display: none;">
-                        <td colspan="7">
+                        <td colspan="8">
                             <div class="details-content">Loading...</div>
                         </td>
                     </tr>`;
@@ -493,7 +523,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Failed to generate table rows:", error);
             systemsTable.innerHTML = `
                 <tr>
-                    <td colspan="7" style="text-align: center; padding: 3rem; color: var(--accent-red);">
+                    <td colspan="8" style="text-align: center; padding: 3rem; color: var(--accent-red);">
                         <div style="font-size: 16px; margin-bottom: 8px;">⚠️</div>
                         <div style="font-weight: 500; margin-bottom: 4px;">Error rendering systems</div>
                         <div style="font-size: 13px; opacity: 0.8;">${escapeHtml(error.message)}</div>
@@ -611,8 +641,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                 `;
                 
-                const clientVersionHTML = data.client_version
-                    ? `<p style="margin: 4px 0 12px; font-size: 13px; color: var(--text-secondary);">Client version: ${escapeHtml(data.client_version)}</p>`
+                // System information block shown in the expanded per-host details.
+                // Uptime and reboot status live in the main table; the deeper
+                // hardware facts live here.
+                const infoRows = [
+                    ['Client version', data.client_version ? escapeHtml(data.client_version) : ''],
+                    ['CPU', data.cpu_model ? escapeHtml(data.cpu_model) : ''],
+                    ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
+                    ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
+                ].filter(([, value]) => value !== '');
+                const systemInfoHTML = infoRows.length
+                    ? `<div class="system-info">
+                        <h4>System information</h4>
+                        <dl>
+                            ${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
+                        </dl>
+                    </div>`
                     : '';
 
                 if (data.pending_updates && data.pending_updates.length > 0) {
@@ -628,7 +672,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         .join("");
                     detailsHTML = `
                         <h3>Pending Updates for ${escapeHtml(data.hostname)}</h3>
-                        ${clientVersionHTML}
+                        ${systemInfoHTML}
                         <table class="updates-table">
                             <thead>
                                 <tr>
@@ -646,14 +690,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (data.update_status_unknown) {
                     detailsHTML = `
                         <h3>Update status unknown for ${escapeHtml(data.hostname)}</h3>
-                        ${clientVersionHTML}
+                        ${systemInfoHTML}
                         <p>No supported package manager was detected on this system. The update status cannot be determined.</p>
                         ${deleteButtonHTML}
                     `;
                 } else {
                     detailsHTML = `
                         <h3>No pending updates for ${escapeHtml(data.hostname)}</h3>
-                        ${clientVersionHTML}
+                        ${systemInfoHTML}
                         ${deleteButtonHTML}
                     `;
                 }
