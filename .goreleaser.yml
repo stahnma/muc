@@ -51,7 +51,7 @@ nfpms:
     package_name: muc-server
     maintainer: Michael Stahnke <stahnma@gmail.com>
     vendor: Michael Stahnke
-    homepage: https://github.com/stahnma/updateHUD
+    homepage: https://github.com/stahnma/muc
     description: "My Update Center - server component"
     license: MIT
     formats:
@@ -75,7 +75,7 @@ nfpms:
     package_name: muc-client
     maintainer: Michael Stahnke <stahnma@gmail.com>
     vendor: Michael Stahnke
-    homepage: https://github.com/stahnma/updateHUD
+    homepage: https://github.com/stahnma/muc
     description: "My Update Center - client agent"
     license: MIT
     formats:
