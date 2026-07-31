@@ -40,17 +40,17 @@
     {
       "attr_path": "ack",
       "broken": false,
-      "derivation": "/nix/store/3yf7xj2zz7mp3bi7f7gqx80ilplffx92-perl5.42.0-ack-3.9.0.drv",
+      "derivation": "/nix/store/84hk0jk0syy2nzvkr0k0hks5hkjxh6pb-perl5.42.0-ack-3.9.0.drv",
       "description": "Grep-like tool tailored to working with large trees of source code",
       "install_id": "ack",
       "license": "[ Artistic-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "perl5.42.0-ack-3.9.0",
       "pname": "ack",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:07:15.124314Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:54.694304Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -62,8 +62,8 @@
         "out"
       ],
       "outputs": {
-        "man": "/nix/store/4s6l1hp05z0dssd1arz72bgbg21jrsfi-perl5.42.0-ack-3.9.0-man",
-        "out": "/nix/store/bfvnqz6fhs69c2vr0h82iypjvzrxl2xr-perl5.42.0-ack-3.9.0"
+        "man": "/nix/store/kaqzmzd2vggd7z1p9hzs4iims3hdrihf-perl5.42.0-ack-3.9.0-man",
+        "out": "/nix/store/njmds9f4xxzww2rmid98s8w1g94irgn6-perl5.42.0-ack-3.9.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -72,17 +72,17 @@
     {
       "attr_path": "ack",
       "broken": false,
-      "derivation": "/nix/store/bjf7an7vvs2dx2cykpfrhqiwys1w90x7-perl5.42.0-ack-3.9.0.drv",
+      "derivation": "/nix/store/anj4pk480lgg28n190sg60855bm708g1-perl5.42.0-ack-3.9.0.drv",
       "description": "Grep-like tool tailored to working with large trees of source code",
       "install_id": "ack",
       "license": "[ Artistic-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "perl5.42.0-ack-3.9.0",
       "pname": "ack",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:43:44.075408Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:21.153755Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -94,8 +94,8 @@
         "out"
       ],
       "outputs": {
-        "man": "/nix/store/rdvgflhcayqkchyxmc8p6wr601s46164-perl5.42.0-ack-3.9.0-man",
-        "out": "/nix/store/n5hbyxlirx659431r7smaiv1kvl80w18-perl5.42.0-ack-3.9.0"
+        "man": "/nix/store/lzc837a2dn6bz24asyihv8sv8iq6mh56-perl5.42.0-ack-3.9.0-man",
+        "out": "/nix/store/wsvgqdikh97rmn45iaf2g8gm1mrlv4mj-perl5.42.0-ack-3.9.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -104,17 +104,17 @@
     {
       "attr_path": "ack",
       "broken": false,
-      "derivation": "/nix/store/0xyzizvxqh9r0s29ccyg8s2wrp7j467a-perl5.42.0-ack-3.9.0.drv",
+      "derivation": "/nix/store/g0g6var69r8qy421p3baxfagq13pv613-perl5.42.0-ack-3.9.0.drv",
       "description": "Grep-like tool tailored to working with large trees of source code",
       "install_id": "ack",
       "license": "[ Artistic-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "perl5.42.0-ack-3.9.0",
       "pname": "ack",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:16:09.138809Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:08:59.948360Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -126,8 +126,8 @@
         "out"
       ],
       "outputs": {
-        "man": "/nix/store/85s65p42xp3gw13zjfcj21n1w42cv8nz-perl5.42.0-ack-3.9.0-man",
-        "out": "/nix/store/zxw0sh5cajqrqkxpff0npgmb0i01fn00-perl5.42.0-ack-3.9.0"
+        "man": "/nix/store/1m27xw13bc5gbg7xw47igz80wfsi4inv-perl5.42.0-ack-3.9.0-man",
+        "out": "/nix/store/i29a5vq0086ff09fsywicvjv6sp3znsd-perl5.42.0-ack-3.9.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -136,17 +136,17 @@
     {
       "attr_path": "ack",
       "broken": false,
-      "derivation": "/nix/store/sm97lqfawxcy8s71z93xbpzdc3gyjgy2-perl5.42.0-ack-3.9.0.drv",
+      "derivation": "/nix/store/d1p4anhldjmf77ldhcbv57bv0mrcdf9x-perl5.42.0-ack-3.9.0.drv",
       "description": "Grep-like tool tailored to working with large trees of source code",
       "install_id": "ack",
       "license": "[ Artistic-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "perl5.42.0-ack-3.9.0",
       "pname": "ack",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:52:22.721811Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:23.770070Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -158,8 +158,8 @@
         "out"
       ],
       "outputs": {
-        "man": "/nix/store/99lai40i5phacn4l8bb096wpf0yvmr2y-perl5.42.0-ack-3.9.0-man",
-        "out": "/nix/store/j3xx9q1z40w8azpiv52bri94fmqbmzjp-perl5.42.0-ack-3.9.0"
+        "man": "/nix/store/aglp8rqm921z5ga4cxhnb49bwjn5qf7a-perl5.42.0-ack-3.9.0-man",
+        "out": "/nix/store/c5q63n3jm6sp6v6xhplynj08rzsv2zv4-perl5.42.0-ack-3.9.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -168,17 +168,17 @@
     {
       "attr_path": "gnumake",
       "broken": false,
-      "derivation": "/nix/store/5vqw4w1argiy9damyh49mz4ifkdpvy4s-gnumake-4.4.1.drv",
+      "derivation": "/nix/store/fq3j34ffr44fa5a5nkwci5pdncl5h7hg-gnumake-4.4.1.drv",
       "description": "Tool to control the generation of non-source files from sources",
       "install_id": "gnumake",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "gnumake-4.4.1",
       "pname": "gnumake",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:07:16.636127Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:56.218409Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -190,10 +190,10 @@
         "out"
       ],
       "outputs": {
-        "doc": "/nix/store/c7l1j109rsygzd1lc3pp2rbfm2p3y642-gnumake-4.4.1-doc",
-        "info": "/nix/store/v9ss50cr4hqvm1c5xhhgb9sgn98gvgd6-gnumake-4.4.1-info",
-        "man": "/nix/store/908rmkli4kdr2706pgax47ph86cpfifh-gnumake-4.4.1-man",
-        "out": "/nix/store/zcbp7z3zaagbm7rpk6hz5zb8qwd40v42-gnumake-4.4.1"
+        "doc": "/nix/store/v2jpgmm2fsg7b0z27cc514jdqbhm0isy-gnumake-4.4.1-doc",
+        "info": "/nix/store/dli72plfj1gcp88wv6px7qjjqvnnlql5-gnumake-4.4.1-info",
+        "man": "/nix/store/mzy3b5lxi8jbq5d63yvq52sjsq73907l-gnumake-4.4.1-man",
+        "out": "/nix/store/ij3d5cfr8h31a41l80jzid0z6kj2ajsv-gnumake-4.4.1"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -202,17 +202,17 @@
     {
       "attr_path": "gnumake",
       "broken": false,
-      "derivation": "/nix/store/sr606kaxyhx2gn82wl01gbqlq452arwd-gnumake-4.4.1.drv",
+      "derivation": "/nix/store/8g055kd88xxnsxxanrn2l1ycmd1zaqp4-gnumake-4.4.1.drv",
       "description": "Tool to control the generation of non-source files from sources",
       "install_id": "gnumake",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "gnumake-4.4.1",
       "pname": "gnumake",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:43:46.650013Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:23.879706Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -224,11 +224,11 @@
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/skri4hsrs5ga3mb2y2zabb86h91kg7yf-gnumake-4.4.1-debug",
-        "doc": "/nix/store/83grbbzidh6mspbq3vcwnv5i2w418f64-gnumake-4.4.1-doc",
-        "info": "/nix/store/pi1waffl6zsh3898x8csg9liwljl1v5b-gnumake-4.4.1-info",
-        "man": "/nix/store/a208sdxbrp4737zrv1lynglgzqj7wjxi-gnumake-4.4.1-man",
-        "out": "/nix/store/y92qq7542dy25bs8ijnrs396n5cvbrvm-gnumake-4.4.1"
+        "debug": "/nix/store/rcg8zj3391869cn266zwxynplwhyf6qw-gnumake-4.4.1-debug",
+        "doc": "/nix/store/qvl65zgm24p9sw0mzw3cxijcs8palykk-gnumake-4.4.1-doc",
+        "info": "/nix/store/2xp5f2ypvrlg6wn5s44jg3ji82l78k9q-gnumake-4.4.1-info",
+        "man": "/nix/store/3c96gbpypik8gzasv9brnka3i6mks9rz-gnumake-4.4.1-man",
+        "out": "/nix/store/v1888rzl1qf8zzd27q1vxvqqssizjx3x-gnumake-4.4.1"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -237,17 +237,17 @@
     {
       "attr_path": "gnumake",
       "broken": false,
-      "derivation": "/nix/store/zchqhprbkh124pd3vlfynvyyb0i5847q-gnumake-4.4.1.drv",
+      "derivation": "/nix/store/k8zf9n1v4hwky8xq8k83rxh7lrxwy630-gnumake-4.4.1.drv",
       "description": "Tool to control the generation of non-source files from sources",
       "install_id": "gnumake",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "gnumake-4.4.1",
       "pname": "gnumake",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:16:10.572125Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.829543Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -259,10 +259,10 @@
         "out"
       ],
       "outputs": {
-        "doc": "/nix/store/8cga3r53093x6yzzayqqjcd2ip2bb6gc-gnumake-4.4.1-doc",
-        "info": "/nix/store/gdg79wm2j8g86d0vilbmwa6sjvdnwysw-gnumake-4.4.1-info",
-        "man": "/nix/store/4jk8w4gsl2d2vgrpi5c8grcyx5h6k1br-gnumake-4.4.1-man",
-        "out": "/nix/store/4sgv9nplhrys2a88lfxw1swlj7kn4v54-gnumake-4.4.1"
+        "doc": "/nix/store/3b9cjf16jx4ncpp3b4k6m8q01nxsrw1n-gnumake-4.4.1-doc",
+        "info": "/nix/store/rriz5p4q8a6sca7sw3p3js1m5dl09ia8-gnumake-4.4.1-info",
+        "man": "/nix/store/wb4yn3d7vmi1hr4f8pz38rjvcl7f70ma-gnumake-4.4.1-man",
+        "out": "/nix/store/0bg5b97b9hbhz8907bfcrch1i116xppa-gnumake-4.4.1"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -271,17 +271,17 @@
     {
       "attr_path": "gnumake",
       "broken": false,
-      "derivation": "/nix/store/kmx0hfjc7yxlmsqy2lqqqy2w9lh5fhgv-gnumake-4.4.1.drv",
+      "derivation": "/nix/store/ppc7b3wjgk81bxnls18vjflgw70wxss4-gnumake-4.4.1.drv",
       "description": "Tool to control the generation of non-source files from sources",
       "install_id": "gnumake",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
       "name": "gnumake-4.4.1",
       "pname": "gnumake",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:52:25.542301Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:26.701509Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -290,46 +290,46 @@
       "version": "4.4.1",
       "outputs_to_install": [
         "man",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/054b9sxxzph2fbwmj45njf1rspjifaz6-gnumake-4.4.1-debug",
+        "doc": "/nix/store/c2skg22md4ablx0qfcrsh7vpad31zgyx-gnumake-4.4.1-doc",
+        "info": "/nix/store/6mifiq9cp2bsg9ghkhifrvlmip7z3147-gnumake-4.4.1-info",
+        "man": "/nix/store/arjpl2nnq7khwfhy16qphyxxg924apy1-gnumake-4.4.1-man",
+        "out": "/nix/store/k9ybsvscqk4lhz5ndc1ap9800im1cry1-gnumake-4.4.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "go",
+      "broken": false,
+      "derivation": "/nix/store/0j94l4ngkz3fppqd0wxqsvjwri4fny1y-go-1.26.4.drv",
+      "description": "Go Programming language",
+      "install_id": "go",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "go-1.26.4",
+      "pname": "go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:56.227877Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.26.4",
+      "outputs_to_install": [
         "out",
         "out",
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/72dxkkiz9jh8icb3h55ryi2c40f5rx8f-gnumake-4.4.1-debug",
-        "doc": "/nix/store/4jrq5glppx1pbf9qvzm33j7igm852pbc-gnumake-4.4.1-doc",
-        "info": "/nix/store/jx8cp7ifpjv63q2rqdwby1qq84fs94lk-gnumake-4.4.1-info",
-        "man": "/nix/store/5xxknr9d7fgm7j2pppvh410nh5jjgq72-gnumake-4.4.1-man",
-        "out": "/nix/store/0rn2xh3zciwdr8sjg79ir79dbr6lnmfb-gnumake-4.4.1"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "go",
-      "broken": false,
-      "derivation": "/nix/store/97qfa61h35q0nqppixvxknsq6wj612gv-go-1.26.2.drv",
-      "description": "Go Programming language",
-      "install_id": "go",
-      "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "go-1.26.2",
-      "pname": "go",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:07:16.645106Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.26.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/fkzywh7rg8lg1n2p0r161iqjwhz540wx-go-1.26.2"
+        "out": "/nix/store/kyai650rrywrzflnwda9mbk2c2j9w68r-go-1.26.4"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -338,28 +338,28 @@
     {
       "attr_path": "go",
       "broken": false,
-      "derivation": "/nix/store/79wmlk24kqdnxmpj5l833ib2fsxpwca0-go-1.26.2.drv",
+      "derivation": "/nix/store/a402qx3ryvfilga56w29z0izz6jgi7gi-go-1.26.4.drv",
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "go-1.26.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "go-1.26.4",
       "pname": "go",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:43:46.665236Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:23.896640Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.26.2",
+      "version": "1.26.4",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/w4i7p78y3735jcy69sk4lcy9zyxr0cav-go-1.26.2"
+        "out": "/nix/store/lgcj27hrbanbc93xm9zdrldds7b1jrw8-go-1.26.4"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -368,28 +368,28 @@
     {
       "attr_path": "go",
       "broken": false,
-      "derivation": "/nix/store/7f579nxnclv9nql5z2d5g2qyv7zfdl16-go-1.26.2.drv",
+      "derivation": "/nix/store/0lvbzgq250sass3jyxxvpamk09gcnym3-go-1.26.4.drv",
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "go-1.26.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "go-1.26.4",
       "pname": "go",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:16:10.581225Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.839364Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.26.2",
+      "version": "1.26.4",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/g0b45l45nlb1kqiywzja7fh49yn7lla5-go-1.26.2"
+        "out": "/nix/store/h0z6ghmi3cihlbm163d72xs9p9nn04a1-go-1.26.4"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -398,28 +398,28 @@
     {
       "attr_path": "go",
       "broken": false,
-      "derivation": "/nix/store/5a501r66jxszbpw9af1q1a5z3rnrcmfs-go-1.26.2.drv",
+      "derivation": "/nix/store/z0b6qhv17xys7hfpnxmk0vm31nc3pxdf-go-1.26.4.drv",
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "go-1.26.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "go-1.26.4",
       "pname": "go",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:52:25.557961Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:26.718134Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.26.2",
+      "version": "1.26.4",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/dimnagks1qsp7180yw74z0npp7z2ihs3-go-1.26.2"
+        "out": "/nix/store/gb0njhqswlc5n127ikgyikvq39r40l6f-go-1.26.4"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -428,28 +428,29 @@
     {
       "attr_path": "goreleaser",
       "broken": false,
-      "derivation": "/nix/store/7pj9ymh2faidkdjirsxmbqjh0xcj049j-goreleaser-2.15.4.drv",
+      "derivation": "/nix/store/9azkcyk1clf8q50nylsn6pmji49cycmh-goreleaser-2.16.0.drv",
       "description": "Deliver Go binaries as fast and easily as possible",
       "install_id": "goreleaser",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "goreleaser-2.15.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "goreleaser-2.16.0",
       "pname": "goreleaser",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:07:16.732636Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:56.327296Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "2.15.4",
+      "version": "2.16.0",
       "outputs_to_install": [
+        "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/4fz0ma3pfmwbf324yhskc9yz9h0zzrvq-goreleaser-2.15.4"
+        "out": "/nix/store/q5lp6f6xlxlqhb6r1y0px1jrbpxnwvjj-goreleaser-2.16.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -458,28 +459,28 @@
     {
       "attr_path": "goreleaser",
       "broken": false,
-      "derivation": "/nix/store/7p9dv6kilf0zy7704ig9v9k8pvw9vr1d-goreleaser-2.15.4.drv",
+      "derivation": "/nix/store/40pm39hk0dqm08cfwwhvf5495y1hj1qh-goreleaser-2.16.0.drv",
       "description": "Deliver Go binaries as fast and easily as possible",
       "install_id": "goreleaser",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "goreleaser-2.15.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "goreleaser-2.16.0",
       "pname": "goreleaser",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T08:43:46.805469Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:24.046141Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "2.15.4",
+      "version": "2.16.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/x3iw7g6r6kjslln5kp6nwpxnci3sjvpd-goreleaser-2.15.4"
+        "out": "/nix/store/vmf03am0fy2fis2h17vrgm6lwaxl4y5m-goreleaser-2.16.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -488,28 +489,28 @@
     {
       "attr_path": "goreleaser",
       "broken": false,
-      "derivation": "/nix/store/gazmi623kg67x27zkn8y8vzy38w6w6wf-goreleaser-2.15.4.drv",
+      "derivation": "/nix/store/k729azqy9bl8c4j59jkz8fa27fkba6vq-goreleaser-2.16.0.drv",
       "description": "Deliver Go binaries as fast and easily as possible",
       "install_id": "goreleaser",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "goreleaser-2.15.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "goreleaser-2.16.0",
       "pname": "goreleaser",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:16:10.669915Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.950913Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "2.15.4",
+      "version": "2.16.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/qzrj7qi4anya8a547sz4arghkgr3iy38-goreleaser-2.15.4"
+        "out": "/nix/store/dwfgkx0ifzzfzxkdgavqdavizzn72afx-goreleaser-2.16.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -518,28 +519,28 @@
     {
       "attr_path": "goreleaser",
       "broken": false,
-      "derivation": "/nix/store/grmnkz45faiiznpzc35zjwagbnk07zhq-goreleaser-2.15.4.drv",
+      "derivation": "/nix/store/205czkwb5614xgh6qvz17ppqn5ayzl12-goreleaser-2.16.0.drv",
       "description": "Deliver Go binaries as fast and easily as possible",
       "install_id": "goreleaser",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "name": "goreleaser-2.15.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "goreleaser-2.16.0",
       "pname": "goreleaser",
-      "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-      "rev_count": 992384,
-      "rev_date": "2026-05-05T04:14:16Z",
-      "scrape_date": "2026-05-06T09:52:25.703383Z",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:26.873608Z",
       "stabilities": [
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "2.15.4",
+      "version": "2.16.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/ipz4kwc92pfwdwya6dg99am0pf87wmxp-goreleaser-2.15.4"
+        "out": "/nix/store/psmqz670rg8rm4hqkfrf4s0k7f9364p5-goreleaser-2.16.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
