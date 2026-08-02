@@ -343,16 +343,44 @@ document.addEventListener("DOMContentLoaded", () => {
         return 'medium';
     }
 
+    // Hours after which data is considered stale, for both check-in and update data.
+    const STALE_THRESHOLD_HOURS = 4;
+
     // Check if a system hasn't checked in for 4+ hours
     function isStaleCheckIn(isoTimestamp) {
         if (!isoTimestamp) return true; // Consider missing timestamp as stale
-        
+
         const now = new Date();
         const then = new Date(isoTimestamp);
         const diffMs = now - then;
         const diffHours = diffMs / (1000 * 60 * 60);
-        
-        return diffHours >= 4;
+
+        return diffHours >= STALE_THRESHOLD_HOURS;
+    }
+
+    // Check whether a system's update data is old even though the host itself is
+    // still checking in. last_seen is stamped by the server on receipt, so it
+    // only says the host is reachable; updates_checked_at is when the client
+    // actually queried its package manager. The two diverge when a client keeps
+    // publishing while its package-manager check is failing or serving from
+    // long-expired metadata — the case where the badge looks trustworthy but the
+    // data behind it is not.
+    function isStaleUpdateData(system) {
+        if (!system || !system.updates_checked_at || !system.last_seen) return false;
+
+        const checked = new Date(system.updates_checked_at);
+        const seen = new Date(system.last_seen);
+        if (isNaN(checked) || isNaN(seen)) return false;
+
+        return (seen - checked) / (1000 * 60 * 60) >= STALE_THRESHOLD_HOURS;
+    }
+
+    // Build the tooltip/label for a system whose update check was incomplete.
+    function updateWarningText(system) {
+        if (!system || !system.update_check_warnings || system.update_check_warnings.length === 0) {
+            return '';
+        }
+        return system.update_check_warnings.join('; ');
     }
 
     // Get OS icon based on OS name
@@ -483,6 +511,16 @@ document.addEventListener("DOMContentLoaded", () => {
                             return '';
                         }
                         const isStale = isStaleCheckIn(system.last_seen);
+                        const staleData = isStaleUpdateData(system);
+                        const warning = updateWarningText(system);
+                        // A badge is only as good as the data behind it. Mark it
+                        // when the check was incomplete (a repo was skipped) or
+                        // when the host is reachable but its update data is old.
+                        const badgeNote = warning
+                            ? `<span class="data-warning-indicator" title="${escapeHtml(warning)}"> ⚠</span>`
+                            : staleData
+                            ? `<span class="data-warning-indicator" title="Host is checking in, but its update data was collected ${escapeHtml(formatRelativeTime(system.updates_checked_at))}"> ⚠</span>`
+                            : '';
                         return `
                     <tr data-hostname="${system.hostname}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
@@ -491,7 +529,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
                         <td>${system.update_status_unknown ?
-                            `<span class="update-badge status-unknown" title="Package manager not detected - update status unknown">
+                            `<span class="update-badge status-unknown" title="${escapeHtml(warning || 'Package manager not detected - update status unknown')}">
                                 Status unknown
                             </span>` :
                             system.updates_available ?
@@ -499,8 +537,8 @@ document.addEventListener("DOMContentLoaded", () => {
                                    title="Updates available${system.pending_updates ? ': ' + system.pending_updates.map(u => escapeHtml(u.name)).join(', ') : ' - Click for details'}">
                                 Updates${system.pending_updates ? ` (${system.pending_updates.length})` : ' (click for details)'}
                                 ${system.pending_updates && getUpdatePriority(system.pending_updates) === 'high' ? ' ⚠️' : ''}
-                            </span>` :
-                            `<span class="update-badge up-to-date">Up to date</span>`
+                            </span>${badgeNote}` :
+                            `<span class="update-badge up-to-date">Up to date</span>${badgeNote}`
                         }</td>
                         <td>${escapeHtml(formatUptime(system.uptime_seconds))}</td>
                         <td class="last-seen-cell" data-timestamp="${escapeHtml(system.last_seen || '')}" title="${formatFullTimestamp(system.last_seen || '')}">
@@ -649,7 +687,23 @@ document.addEventListener("DOMContentLoaded", () => {
                     ['CPU', data.cpu_model ? escapeHtml(data.cpu_model) : ''],
                     ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
                     ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
+                    // When the package manager was actually queried, as opposed
+                    // to Last Seen in the table, which is when the server last
+                    // heard from the host.
+                    ['Update data collected', data.updates_checked_at
+                        ? `<span title="${escapeHtml(formatFullTimestamp(data.updates_checked_at))}">${escapeHtml(formatRelativeTime(data.updates_checked_at))}</span>`
+                        : ''],
                 ].filter(([, value]) => value !== '');
+
+                // Surface an incomplete check explicitly: the pending list below
+                // is a lower bound, not an answer, when a repository was skipped.
+                const warnings = data.update_check_warnings || [];
+                const warningsHTML = warnings.length
+                    ? `<div class="update-check-warnings">
+                        <h4>⚠ Update check was incomplete</h4>
+                        <ul>${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+                    </div>`
+                    : '';
                 const systemInfoHTML = infoRows.length
                     ? `<div class="system-info">
                         <h4>System information</h4>
@@ -673,6 +727,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     detailsHTML = `
                         <h3>Pending Updates for ${escapeHtml(data.hostname)}</h3>
                         ${systemInfoHTML}
+                        ${warningsHTML}
                         <table class="updates-table">
                             <thead>
                                 <tr>
@@ -691,13 +746,17 @@ document.addEventListener("DOMContentLoaded", () => {
                     detailsHTML = `
                         <h3>Update status unknown for ${escapeHtml(data.hostname)}</h3>
                         ${systemInfoHTML}
-                        <p>No supported package manager was detected on this system. The update status cannot be determined.</p>
+                        ${warningsHTML}
+                        <p>${warnings.length
+                            ? 'The update check ran but could not see everything, so an empty result cannot be trusted as "up to date".'
+                            : 'No supported package manager was detected, or its update check failed to run. The update status cannot be determined.'}</p>
                         ${deleteButtonHTML}
                     `;
                 } else {
                     detailsHTML = `
                         <h3>No pending updates for ${escapeHtml(data.hostname)}</h3>
                         ${systemInfoHTML}
+                        ${warningsHTML}
                         ${deleteButtonHTML}
                     `;
                 }

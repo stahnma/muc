@@ -471,6 +471,35 @@ th.sortable.descending::after {
     font-size: 14px;
 }
 
+/* Marks an update badge whose underlying data is incomplete or old, so a
+   confident-looking "Up to date" is visibly qualified. */
+.data-warning-indicator {
+    color: var(--accent-orange);
+    margin-left: 4px;
+    font-size: 14px;
+    cursor: help;
+}
+
+.update-check-warnings {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--accent-orange);
+    background: rgba(255, 165, 0, 0.08);
+    border-radius: 4px;
+}
+
+.update-check-warnings h4 {
+    margin: 0 0 6px;
+    color: var(--accent-orange);
+    font-size: 14px;
+}
+
+.update-check-warnings ul {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13px;
+}
+
 /* Delete button styles */
 .delete-system-btn {
     background: rgba(248, 81, 73, 0.15) !important;

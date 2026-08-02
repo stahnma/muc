@@ -47,13 +47,21 @@ type System struct {
 	UpdatesAvailable    bool             `json:"updates_available"`
 	UpdateStatusUnknown bool             `json:"update_status_unknown"`
 	PendingUpdates      []updates.Update `json:"pending_updates"`
-	Timestamp           string           `json:"timestamp"`
-	ClientVersion       string           `json:"client_version"`
-	CPUModel            string           `json:"cpu_model"`
-	CPUCores            int              `json:"cpu_cores"`
-	MemoryTotalBytes    uint64           `json:"memory_total_bytes"`
-	UptimeSeconds       uint64           `json:"uptime_seconds"`
-	RebootRequired      bool             `json:"reboot_required"`
+	// UpdatesCheckedAt is when the package-manager query actually ran, in UTC.
+	// The server stamps its own LastSeen on receipt, which only says the host is
+	// reachable — this says how old the update data itself is, so a host running
+	// on hours-old repo metadata is distinguishable from a freshly checked one.
+	UpdatesCheckedAt string `json:"updates_checked_at"`
+	// UpdateCheckWarnings describes ways the check was incomplete but did not
+	// outright fail — repositories the package manager silently skipped, for
+	// instance. The count is then a lower bound rather than an answer.
+	UpdateCheckWarnings []string `json:"update_check_warnings,omitempty"`
+	ClientVersion       string   `json:"client_version"`
+	CPUModel            string   `json:"cpu_model"`
+	CPUCores            int      `json:"cpu_cores"`
+	MemoryTotalBytes    uint64   `json:"memory_total_bytes"`
+	UptimeSeconds       uint64   `json:"uptime_seconds"`
+	RebootRequired      bool     `json:"reboot_required"`
 }
 
 // Collects all system data to prepare for publishing
@@ -126,6 +134,11 @@ func collectSystemData() (System, error) {
 
 	system.PendingUpdates = updateResult.Updates
 	system.UpdatesAvailable, system.UpdateStatusUnknown = updateResult.Status()
+	system.UpdatesCheckedAt = time.Now().UTC().Format(time.RFC3339)
+	for _, repo := range updateResult.SkippedRepos {
+		system.UpdateCheckWarnings = append(system.UpdateCheckWarnings,
+			"repository skipped, update list may be incomplete: "+repo)
+	}
 
 	// Hardware, uptime, and reboot-required status (best-effort)
 	hw := hostinfo.Collect()
@@ -134,9 +147,6 @@ func collectSystemData() (System, error) {
 	system.MemoryTotalBytes = hw.MemoryTotalBytes
 	system.UptimeSeconds = hw.UptimeSeconds
 	system.RebootRequired = hw.RebootRequired
-
-	// Timestamp
-	system.Timestamp = time.Now().Format(time.RFC3339)
 
 	return system, nil
 }

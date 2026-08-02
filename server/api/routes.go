@@ -21,6 +21,8 @@ type SystemSummary struct {
 	UpdatesAvailable    bool            `json:"updates_available"`
 	UpdateStatusUnknown bool            `json:"update_status_unknown"`
 	LastSeen            string          `json:"last_seen"`
+	UpdatesCheckedAt    string          `json:"updates_checked_at"`
+	UpdateCheckWarnings []string        `json:"update_check_warnings,omitempty"`
 	PendingUpdates      []models.Update `json:"pending_updates"`
 	CPUModel            string          `json:"cpu_model"`
 	CPUCores            int             `json:"cpu_cores"`
@@ -52,6 +54,8 @@ func GetSystemsHandler(store storage.Storage) http.HandlerFunc {
 				UpdatesAvailable:    system.UpdatesAvailable,
 				UpdateStatusUnknown: system.UpdateStatusUnknown,
 				LastSeen:            system.LastSeen,
+				UpdatesCheckedAt:    system.UpdatesCheckedAt,
+				UpdateCheckWarnings: system.UpdateCheckWarnings,
 				PendingUpdates:      system.PendingUpdates,
 				CPUModel:            system.CPUModel,
 				CPUCores:            system.CPUCores,

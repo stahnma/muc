@@ -224,12 +224,19 @@ their metadata). Two consequences are worth knowing:
   `repomd.xml` uses a per-user GPG directory under the cache dir rather than the
   system rpm keyring, so an unprivileged dnf cannot import the key, cannot prompt,
   and `skip_if_unavailable` silently drops the repo. The client now reports this
-  instead of hiding it: the host shows "Status unknown" with the skipped repo
-  named in the expanded row. Seed muc's keyring once to fix such a host:
+  instead of hiding it: the host shows "Status unknown" (or a ⚠ next to its update
+  badge) with the skipped repo named in the expanded row. Seed muc's keyring once
+  to fix such a host:
 
   ```bash
   sudo -u muc dnf -y --setopt=cachedir=/var/lib/muc/dnf makecache
   ```
+
+The dashboard reports two distinct timestamps. **Last Seen** is stamped by the
+server when it receives a check-in, so it only means the host is reachable.
+**Update data collected** (`updates_checked_at`, in the expanded row) is when the
+client actually queried its package manager. When the two diverge the host is
+flagged, so a badge backed by hours-old data is not mistaken for a fresh one.
 
 ## Usage
 
@@ -261,7 +268,8 @@ The web dashboard provides:
 - Pending update lists with package names and versions
 - Sortable columns
 - Expandable rows to view detailed update information
-- Last seen timestamps
+- Last seen timestamps, plus when the update data itself was collected
+- Warnings when an update check was incomplete (e.g. a repository was skipped)
 
 ## Alternatives
 
