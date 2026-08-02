@@ -47,10 +47,37 @@ func TestClientSystemdUnit(t *testing.T) {
 	assertContains(t, content, "Type=", "missing Type directive")
 	assertContains(t, content, "User=muc", "missing User=muc")
 	assertContains(t, content, "Restart=always", "missing Restart=always")
+	// muc-client-recheck.service reloads the client after a package transaction;
+	// without ExecReload that reload is a no-op and the dashboard only catches up
+	// on the next poll.
+	assertContains(t, content, "ExecReload=", "missing ExecReload; muc-client-recheck.service cannot trigger a re-check")
+	assertContains(t, content, "USR1", "ExecReload must send SIGUSR1, which the client handles as 're-check now'")
 	// The client pins dnf's cache to $STATE_DIRECTORY. Without StateDirectory an
 	// unprivileged dnf falls back to a /var/tmp dir that PrivateTmp destroys on
 	// every restart, forcing a full metadata re-download each time.
 	assertContains(t, content, "StateDirectory=muc", "missing StateDirectory=muc")
+}
+
+// TestClientRecheckUnits covers the path/service pair that makes the dashboard
+// reflect a package transaction in seconds instead of at the next poll.
+func TestClientRecheckUnits(t *testing.T) {
+	pathUnit := readFileOrFail(t, "client/dist/muc-client-recheck.path")
+
+	assertContains(t, pathUnit, "[Path]", "missing [Path] section")
+	assertContains(t, pathUnit, "[Install]", "missing [Install] section")
+	assertContains(t, pathUnit, "WantedBy=paths.target", "path units must be wanted by paths.target")
+	assertContains(t, pathUnit, "Unit=muc-client-recheck.service", "path unit must trigger the recheck service")
+	// Watch both package-database families: one package builds for rpm and deb.
+	assertContains(t, pathUnit, "/var/lib/rpm", "missing rpm database watch")
+	assertContains(t, pathUnit, "/var/lib/dpkg", "missing dpkg database watch")
+
+	svcUnit := readFileOrFail(t, "client/dist/muc-client-recheck.service")
+
+	assertContains(t, svcUnit, "Type=oneshot", "recheck service must be a oneshot, not a daemon")
+	assertContains(t, svcUnit, "reload muc-client", "recheck service must reload muc-client")
+	// Without Requisite= the path unit starts a failing job on every package
+	// transaction when the client is not running.
+	assertContains(t, svcUnit, "Requisite=muc-client.service", "missing Requisite guard on muc-client.service")
 }
 
 func TestShellScripts(t *testing.T) {
@@ -62,8 +89,9 @@ func TestShellScripts(t *testing.T) {
 		{"server/dist/postinstall.sh", []string{"daemon-reload"}},
 		{"server/dist/preremove.sh", []string{"systemctl stop"}},
 		{"client/dist/preinstall.sh", []string{"groupadd", "useradd"}},
-		{"client/dist/postinstall.sh", []string{"daemon-reload"}},
+		{"client/dist/postinstall.sh", []string{"daemon-reload", "muc-client-recheck.path"}},
 		{"client/dist/preremove.sh", []string{"systemctl stop"}},
+		{"client/dist/postremove.sh", []string{"muc-client-recheck.path"}},
 	}
 	for _, s := range scripts {
 		t.Run(s.path, func(t *testing.T) {

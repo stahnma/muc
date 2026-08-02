@@ -8,6 +8,10 @@ Type=simple
 User=muc
 Group=muc
 ExecStart=/usr/bin/muc-client
+# muc-client-recheck.path reloads us after a package transaction; SIGUSR1 makes
+# the client re-check for updates immediately instead of waiting out its poll
+# interval, so the dashboard reflects a `dnf upgrade` within seconds.
+ExecReload=/bin/kill -s USR1 $MAINPID
 Restart=always
 RestartSec=30
 # The client points dnf's cache at $STATE_DIRECTORY (/var/lib/muc). Running

@@ -8,8 +8,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -21,6 +23,12 @@ import (
 )
 
 var Version = "dev"
+
+// recheckSettleDelay is how long to wait after the last SIGUSR1 before
+// re-checking. A single `dnf upgrade` writes the rpm database many times, and
+// the last write lands before rpm has finished running scriptlets, so a short
+// wait both coalesces the burst into one check and lets the transaction finish.
+const recheckSettleDelay = 30 * time.Second
 
 // getEnv gets an environment variable or returns a default value
 func getEnv(key, fallback string) string {
@@ -404,6 +412,22 @@ func main() {
 	healthTicker := time.NewTicker(30 * time.Second)
 	defer healthTicker.Stop()
 
+	// SIGUSR1 asks for an out-of-band re-check. muc-client-recheck.path watches
+	// the rpm/dpkg databases and reloads us after a package transaction, so an
+	// admin running `dnf upgrade` sees the dashboard catch up in seconds instead
+	// of waiting out the poll interval above.
+	recheck := make(chan os.Signal, 1)
+	signal.Notify(recheck, syscall.SIGUSR1)
+	defer signal.Stop(recheck)
+
+	// One transaction writes the package database many times, so coalesce a
+	// burst of signals into a single check once things settle.
+	settle := time.NewTimer(0)
+	if !settle.Stop() {
+		<-settle.C
+	}
+	defer settle.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -412,6 +436,23 @@ func main() {
 			}
 		case <-healthTicker.C:
 			checkConnection()
+		case <-recheck:
+			slog.Debug("Re-check requested; waiting for package transaction to settle",
+				"settle", recheckSettleDelay)
+			if !settle.Stop() {
+				// Drain only if the timer had already fired and nothing has
+				// consumed it yet; a stopped-but-unfired timer has nothing to drain.
+				select {
+				case <-settle.C:
+				default:
+				}
+			}
+			settle.Reset(recheckSettleDelay)
+		case <-settle.C:
+			slog.Info("Package transaction detected; re-checking for updates")
+			if checkConnection() {
+				sendSystemUpdate(nc)
+			}
 		}
 	}
 }

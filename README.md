@@ -202,6 +202,12 @@ Examples:
 
 The client can be run as a systemd service. See `client/contrib/systemd.unit` for an example systemd unit file.
 
+The packages install `muc-client.service` plus a `muc-client-recheck.path` unit
+that watches `/var/lib/rpm` and `/var/lib/dpkg`. After any package transaction it
+reloads the client, which re-checks for updates once things settle — so the
+dashboard reflects a `dnf upgrade` within seconds instead of at the next poll
+(every 5 minutes). The client still polls if the path unit is unavailable.
+
 ### Keeping update data fresh
 
 The client runs as the unprivileged `muc` user on dnf/yum hosts (apt and zypper

@@ -5,6 +5,8 @@ if [ "$1" = "upgrade" ] || [ "$1" -ge 1 ] 2>/dev/null; then
   systemctl daemon-reload
   systemctl try-restart muc-client 2>/dev/null || true
 else
+  # Full removal: stop watching the package database.
+  systemctl disable --now muc-client-recheck.path 2>/dev/null || true
   # Full removal: drop the "run as root" override installed by postinstall.
   rm -f /etc/systemd/system/muc-client.service.d/10-root.conf 2>/dev/null || true
   # Also clean up the previous zypper-only drop-in name from older packages.

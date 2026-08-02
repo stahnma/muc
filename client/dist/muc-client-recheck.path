@@ -1,0 +1,21 @@
+[Unit]
+Description=Watch the package database for muc-client
+Documentation=man:systemd.path(5)
+
+[Path]
+# Without this the dashboard only catches up on muc-client's poll interval, so
+# an admin who patches a host sees stale pending updates for minutes afterwards.
+#
+# Watch the directories, not the database files: the rpm database is SQLite in
+# WAL mode, so a transaction's writes can land in rpmdb.sqlite-wal and leave
+# rpmdb.sqlite itself untouched until a checkpoint. A directory watch also picks
+# up the journal/lock files rpm and dpkg create during a transaction.
+#
+# A PathChanged= on a path that does not exist simply waits for it to appear, so
+# both lines are harmless on the distro family that lacks the other.
+PathChanged=/var/lib/rpm
+PathChanged=/var/lib/dpkg
+Unit=muc-client-recheck.service
+
+[Install]
+WantedBy=paths.target

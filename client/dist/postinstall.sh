@@ -47,3 +47,8 @@ fi
 
 systemctl daemon-reload
 systemctl try-restart muc-client
+
+# Watch the package database so a `dnf upgrade` is reflected on the dashboard in
+# seconds rather than at the next poll. Not fatal if it cannot be enabled — the
+# client still polls.
+systemctl enable --now muc-client-recheck.path 2>/dev/null || true

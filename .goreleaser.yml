@@ -84,6 +84,10 @@ nfpms:
     contents:
       - src: client/dist/muc-client.service
         dst: /usr/lib/systemd/system/muc-client.service
+      - src: client/dist/muc-client-recheck.path
+        dst: /usr/lib/systemd/system/muc-client-recheck.path
+      - src: client/dist/muc-client-recheck.service
+        dst: /usr/lib/systemd/system/muc-client-recheck.service
       - src: client/dist/client.yml
         dst: /etc/muc/client.yml
         type: config|noreplace

@@ -1,0 +1,14 @@
+[Unit]
+Description=Ask muc-client to re-check for updates now
+# Nothing to do if the client is not running; without this the path unit would
+# start a failing job on every package transaction.
+Requisite=muc-client.service
+After=muc-client.service
+
+[Service]
+Type=oneshot
+# Runs as root because it signals the muc-owned client process. It is a oneshot
+# that execs systemctl and exits, not a privileged daemon. muc-client.service's
+# ExecReload turns this into SIGUSR1; the client then waits for the transaction
+# to settle before re-checking, so a multi-package upgrade triggers one check.
+ExecStart=/usr/bin/systemctl reload muc-client.service
