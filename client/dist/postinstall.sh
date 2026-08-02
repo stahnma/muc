@@ -17,13 +17,12 @@
 # to $STATE_DIRECTORY (see muc-client.service) and by passing the repoid-glob
 # form of metadata_expire, which per-repo settings cannot override.
 #
-# One dnf limitation remains, and the client now reports it rather than hiding
-# it: a repository with repo_gpgcheck=1 verifies repomd.xml against a per-user
-# GPG directory under the cache dir, not the system rpm keyring. An unprivileged
-# dnf cannot prompt to import the key, so skip_if_unavailable drops the repo and
-# its updates go unreported. Seed muc's keyring once to fix such a host:
-#
-#     sudo -u muc dnf -y --setopt=cachedir=/var/lib/muc/dnf makecache
+# A repository with repo_gpgcheck=1 verifies repomd.xml against a per-repo GPG
+# keyring under the cache dir, separate from the system rpm keyring. The client
+# passes -y so it adopts those keys unattended; without that the import prompt is
+# declined and skip_if_unavailable drops the repo along with all of its updates.
+# Each import is logged to the journal, so `journalctl -u muc-client | grep
+# "imported repository signing keys"` shows what the host has trusted.
 #
 # Install a drop-in to run as root only where the package manager requires it.
 DROPIN_DIR=/etc/systemd/system/muc-client.service.d

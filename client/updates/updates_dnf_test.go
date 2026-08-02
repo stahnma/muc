@@ -2,6 +2,7 @@ package updates
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,53 @@ func TestDnfCheckUpdateArgsForcesRefresh(t *testing.T) {
 
 	if dnfMetadataExpire == "" {
 		t.Error("dnfMetadataExpire must be a non-empty dnf duration")
+	}
+}
+
+// TestDnfCheckUpdateArgsAcceptsRepoKeys pins the -y that lets the client adopt a
+// repo's signing key unattended. Without it, a repo with repo_gpgcheck=1 whose
+// key is not yet in the per-repo keyring prompts, the prompt is declined, and
+// skip_if_unavailable silently drops the repo along with all of its updates.
+func TestDnfCheckUpdateArgsAcceptsRepoKeys(t *testing.T) {
+	args := dnfCheckUpdateArgs()
+
+	if !slices.Contains(args, "-y") && !slices.Contains(args, "--assumeyes") {
+		t.Errorf("dnf check-update args must accept repo signing keys unattended; got %v", args)
+	}
+	if slices.Contains(args, "--assumeno") {
+		t.Errorf("--assumeno declines the key import and silently drops the repo; got %v", args)
+	}
+}
+
+// TestParseDnfImportedKeys covers the audit trail for keys adopted under -y.
+// Nothing else records that the host's trusted set changed.
+func TestParseDnfImportedKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   []string
+	}{
+		{name: "no imports", stderr: "Last metadata expiration check: 0:03:11 ago.", want: nil},
+		{
+			name: "single import",
+			stderr: `Importing GPG key 0x10458545:
+ Userid     : "Grafana Labs <engineering@grafana.com>"
+ Fingerprint: B53A E77B ADB6 30A6 8304 6005 963F A277 1045 8545`,
+			want: []string{"0x10458545"},
+		},
+		{
+			name:   "several imports are deduplicated",
+			stderr: "Importing GPG key 0x10458545:\nImporting GPG key 0xA621E701:\nImporting GPG key 0x10458545:",
+			want:   []string{"0x10458545", "0xA621E701"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseDnfImportedKeys(tt.stderr); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseDnfImportedKeys() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

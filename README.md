@@ -220,17 +220,25 @@ their metadata). Two consequences are worth knowing:
   `dnf-makecache.timer` does *not* keep the client's view warm — it refreshes
   root's cache, which is a separate tree.
 
-- **A repo with `repo_gpgcheck=1` may be invisible to the client.** Verifying
-  `repomd.xml` uses a per-user GPG directory under the cache dir rather than the
-  system rpm keyring, so an unprivileged dnf cannot import the key, cannot prompt,
-  and `skip_if_unavailable` silently drops the repo. The client now reports this
-  instead of hiding it: the host shows "Status unknown" (or a ⚠ next to its update
-  badge) with the skipped repo named in the expanded row. Seed muc's keyring once
-  to fix such a host:
+- **Repository signing keys are accepted unattended.** A repo with
+  `repo_gpgcheck=1` verifies `repomd.xml` against a per-repo GPG keyring under the
+  cache dir, separate from the system rpm keyring. The client passes `-y` so it
+  adopts those keys without prompting — otherwise the prompt is declined and
+  `skip_if_unavailable` drops the repo along with all of its updates.
+
+  The trade-off is deliberate: the client trusts whatever key the repo's
+  configured `gpgkey=` URL serves. `check-update` installs nothing, so this only
+  affects which keys the muc cache trusts for *metadata* verification; package
+  installation still verifies against the root-owned rpm keyring. Every import is
+  logged, so you can audit what a host has trusted:
 
   ```bash
-  sudo -u muc dnf -y --setopt=cachedir=/var/lib/muc/dnf makecache
+  journalctl -u muc-client | grep "imported repository signing keys"
   ```
+
+  If a repo still cannot be read for another reason (network, a mirror outage),
+  the client reports it rather than hiding it: the host shows "Status unknown" (or
+  a ⚠ next to its update badge) with the skipped repo named in the expanded row.
 
 The dashboard reports two distinct timestamps. **Last Seen** is stamped by the
 server when it receives a check-in, so it only means the host is reachable.

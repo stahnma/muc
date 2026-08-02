@@ -70,12 +70,25 @@ func dnfCacheDir() string {
 
 // dnfCheckUpdateArgs returns the arguments for the primary dnf check-update
 // invocation: the short metadata_expire that keeps results fresh, a persistent
-// cache directory, and --assumeno so a repo that wants an interactive GPG key
-// import fails fast instead of depending on stdin being closed.
+// cache directory, and -y to accept repository signing keys unattended.
+//
+// On -y: a repo with repo_gpgcheck=1 verifies repomd.xml against a per-repo
+// keyring under the cache dir, separate from the system rpm keyring. When that
+// keyring lacks the key dnf wants to import it and prompts; unattended the
+// prompt is declined, skip_if_unavailable drops the repo, and its updates go
+// unreported. -y accepts instead, which is what makes the repo visible at all.
+//
+// The trade is real and deliberate: the client will trust whatever key the
+// repo's configured gpgkey= URL serves, so a hijacked gpgkey URL or a
+// compromised repo host would be accepted rather than flagged. check-update
+// installs nothing, so the blast radius is confined to which keys this host's
+// muc cache trusts for metadata verification — not to package installation,
+// which still verifies against the root-owned rpm keyring. Every import is
+// logged (see parseDnfImportedKeys) so the decision is auditable after the fact.
 func dnfCheckUpdateArgs() []string {
 	args := []string{
 		"check-update",
-		"--assumeno",
+		"-y",
 		"--setopt=skip_if_unavailable=True",
 		dnfMetadataExpireSetopt,
 	}
@@ -162,6 +175,27 @@ type dnfRunFunc func(args ...string) (stdout []byte, stderrOut string, err error
 // dnf. Production always uses runDnfCheckUpdate.
 var dnfRunner dnfRunFunc = runDnfCheckUpdate
 
+// dnfImportedKeyPattern matches dnf's announcement that it is adopting a
+// repository signing key. Because the client passes -y, that adoption happens
+// without anyone confirming it, so it is logged to leave an audit trail.
+var dnfImportedKeyPattern = regexp.MustCompile(`Importing GPG key (0x[0-9A-Fa-f]+)`)
+
+// parseDnfImportedKeys extracts the key IDs dnf imported during a check. An
+// import is normal on a host's first sight of a repo and should be rare after
+// that; a key appearing for a repo that already worked is worth investigating,
+// which is only possible if it was recorded.
+func parseDnfImportedKeys(stderr string) []string {
+	var keys []string
+	seen := make(map[string]bool)
+	for _, m := range dnfImportedKeyPattern.FindAllStringSubmatch(stderr, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			keys = append(keys, m[1])
+		}
+	}
+	return keys
+}
+
 // runDnfCheckUpdate runs dnf check-update with the given arguments and returns
 // stdout plus stderr, or an error if the command fails with a non-100 exit code.
 // Exit code 100 means updates are available and is treated as success.
@@ -214,7 +248,7 @@ func collectDnfUpdates(run dnfRunFunc) UpdateResult {
 	degraded := false
 	if err != nil {
 		debugLog("Retrying dnf check-update without skip_if_unavailable")
-		retry := []string{"check-update", "--assumeno", dnfMetadataExpireSetopt}
+		retry := []string{"check-update", "-y", dnfMetadataExpireSetopt}
 		if dir := ensureDnfCacheDir(); dir != "" {
 			retry = append(retry, "--setopt=cachedir="+dir)
 		}
@@ -232,6 +266,14 @@ func collectDnfUpdates(run dnfRunFunc) UpdateResult {
 			ManagerDetected: true,
 			CheckFailed:     true,
 		}
+	}
+
+	// The client passes -y, so any repository signing key dnf decided to adopt
+	// was adopted without confirmation. Record it: this is the only trace that
+	// the host's trusted set changed.
+	if keys := parseDnfImportedKeys(stderr); len(keys) > 0 {
+		slog.Warn("dnf imported repository signing keys unattended (-y); the set of keys trusted for metadata verification has changed",
+			"keys", keys, "euid", os.Geteuid())
 	}
 
 	// skip_if_unavailable turns an unreachable or unverifiable repo into a
