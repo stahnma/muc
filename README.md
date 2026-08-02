@@ -202,6 +202,29 @@ Examples:
 
 The client can be run as a systemd service. See `client/contrib/systemd.unit` for an example systemd unit file.
 
+### Keeping update data fresh
+
+The client runs as the unprivileged `muc` user on dnf/yum hosts (apt and zypper
+hosts get a packaging drop-in that runs it as root, because only root can refresh
+their metadata). Two consequences are worth knowing:
+
+- **dnf's cache is pinned to `/var/lib/muc/dnf`.** An unprivileged dnf cannot
+  write `/var/cache/dnf` and would otherwise fall back to a `/var/tmp` directory
+  that the unit's `PrivateTmp=true` destroys on every restart. Note that
+  `dnf-makecache.timer` does *not* keep the client's view warm — it refreshes
+  root's cache, which is a separate tree.
+
+- **A repo with `repo_gpgcheck=1` may be invisible to the client.** Verifying
+  `repomd.xml` uses a per-user GPG directory under the cache dir rather than the
+  system rpm keyring, so an unprivileged dnf cannot import the key, cannot prompt,
+  and `skip_if_unavailable` silently drops the repo. The client now reports this
+  instead of hiding it: the host shows "Status unknown" with the skipped repo
+  named in the expanded row. Seed muc's keyring once to fix such a host:
+
+  ```bash
+  sudo -u muc dnf -y --setopt=cachedir=/var/lib/muc/dnf makecache
+  ```
+
 ## Usage
 
 1. **Start the server**:

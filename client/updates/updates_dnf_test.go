@@ -1,11 +1,22 @@
 package updates
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 // TestDnfCheckUpdateArgsForcesRefresh guards against the staleness regression
 // where the client under-reported updates (dashboard showed 2, `dnf update`
 // showed 3) because dnf answered from a stale metadata cache. The primary
 // check-update invocation must shorten metadata_expire so dnf re-syncs.
+//
+// The "*." repoid glob is the part that actually works: a bare
+// --setopt=metadata_expire= only writes dnf's [main] section, which per-repo
+// settings in /etc/yum.repos.d override. RHEL/Rocky/CentOS ship
+// metadata_expire=6h in their stock repo files, so the unprefixed form is a
+// silent no-op on the base repos. Verified on Rocky 10 via `dnf config-manager
+// --dump baseos`: unprefixed left it at 21600, the glob applied 3600.
 func TestDnfCheckUpdateArgsForcesRefresh(t *testing.T) {
 	args := dnfCheckUpdateArgs()
 
@@ -13,12 +24,15 @@ func TestDnfCheckUpdateArgsForcesRefresh(t *testing.T) {
 		t.Fatalf("expected first arg to be check-update, got %v", args)
 	}
 
-	want := "--setopt=metadata_expire=" + dnfMetadataExpire
+	want := "--setopt=*.metadata_expire=" + dnfMetadataExpire
 	found := false
 	for _, a := range args {
 		if a == want {
 			found = true
-			break
+		}
+		if a == "--setopt=metadata_expire="+dnfMetadataExpire {
+			t.Errorf("args use the unprefixed --setopt=metadata_expire=, which per-repo "+
+				"settings in /etc/yum.repos.d override; use the %q repoid glob instead", want)
 		}
 	}
 	if !found {
@@ -27,5 +41,110 @@ func TestDnfCheckUpdateArgsForcesRefresh(t *testing.T) {
 
 	if dnfMetadataExpire == "" {
 		t.Error("dnfMetadataExpire must be a non-empty dnf duration")
+	}
+}
+
+// TestDnfCheckUpdateArgsUsesPersistentCache verifies the client pins a cache
+// directory when unprivileged. Without it dnf falls back to /var/tmp/dnf-$USER-*,
+// which the unit's PrivateTmp=true destroys on every restart — so with
+// Restart=always the client re-downloads tens of megabytes of repo metadata
+// each time it comes back.
+func TestDnfCheckUpdateArgsUsesPersistentCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("creates a cache directory")
+	}
+	t.Setenv("STATE_DIRECTORY", t.TempDir())
+
+	if dnfCacheDir() == "" {
+		// Running as root the default /var/cache/dnf is correct and shared with
+		// dnf-makecache.timer, so no cachedir override is expected.
+		t.Skip("running as root; dnf's default cache dir is intentionally used")
+	}
+
+	found := false
+	for _, a := range dnfCheckUpdateArgs() {
+		if strings.HasPrefix(a, "--setopt=cachedir=") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("unprivileged dnf check-update args must pin a persistent cachedir; got %v", dnfCheckUpdateArgs())
+	}
+}
+
+// TestDnfCacheDirPrefersStateDirectory checks the systemd StateDirectory is used
+// ahead of $HOME, and that root is left on dnf's default.
+func TestDnfCacheDirPrefersStateDirectory(t *testing.T) {
+	t.Setenv("HOME", "/home/somewhere")
+	// systemd colon-separates STATE_DIRECTORY when several are configured.
+	t.Setenv("STATE_DIRECTORY", "/var/lib/muc:/var/lib/other")
+
+	got := dnfCacheDir()
+	if got == "" {
+		t.Skip("running as root; dnf's default cache dir is intentionally used")
+	}
+	if got != "/var/lib/muc/dnf" {
+		t.Errorf("dnfCacheDir() = %q, want /var/lib/muc/dnf", got)
+	}
+}
+
+// TestParseDnfSkippedRepos covers the stderr dnf emits when skip_if_unavailable
+// swallows a repo failure. dnf still exits 0/100, so without scraping these the
+// client reports a silently incomplete package list as a confident "up to date".
+//
+// The multi-line sample is verbatim from a Rocky 10 host where the grafana repo
+// sets repo_gpgcheck=1: repomd verification uses a per-user GPG directory under
+// the cache dir rather than the system rpm keyring, so an unprivileged dnf tries
+// to import the key, cannot prompt, and drops the repo.
+func TestParseDnfSkippedRepos(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   []string
+	}{
+		{
+			name:   "clean run",
+			stderr: "",
+			want:   nil,
+		},
+		{
+			name: "gpg key import failure",
+			stderr: `Importing GPG key 0x10458545:
+ Userid     : "Grafana Labs <engineering@grafana.com>"
+ From       : https://rpm.grafana.com/gpg.key
+Error: Failed to download metadata for repo 'grafana': repomd.xml GPG signature verification error: Signing key not found
+Ignoring repositories: grafana`,
+			want: []string{"grafana"},
+		},
+		{
+			name:   "several repos on the ignore line",
+			stderr: "Ignoring repositories: grafana, hashicorp epel",
+			want:   []string{"epel", "grafana", "hashicorp"},
+		},
+		{
+			name:   "download errors phrasing",
+			stderr: "Errors during downloading metadata for repository 'extras':\n  - Curl error",
+			want:   []string{"extras"},
+		},
+		{
+			name: "deduplicated across patterns",
+			stderr: `Failed to download metadata for repo 'grafana': timeout
+Ignoring repositories: grafana`,
+			want: []string{"grafana"},
+		},
+		{
+			name:   "unrelated warnings are not repos",
+			stderr: "Last metadata expiration check: 0:03:11 ago.\nwarning: /var/cache/dnf is not writable",
+			want:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseDnfSkippedRepos(tt.stderr)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseDnfSkippedRepos() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

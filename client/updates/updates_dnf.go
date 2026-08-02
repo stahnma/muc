@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -21,21 +24,152 @@ import (
 // as "dashboard shows 2 updates, `dnf update` shows 3".
 const dnfMetadataExpire = "1h"
 
-// dnfCheckUpdateArgs returns the arguments for the primary dnf check-update
-// invocation, including the short metadata_expire that keeps results fresh.
-func dnfCheckUpdateArgs() []string {
-	return []string{
-		"check-update",
-		"--setopt=skip_if_unavailable=True",
-		"--setopt=metadata_expire=" + dnfMetadataExpire,
+// dnfMetadataExpireSetopt is the --setopt that actually shortens the expiry.
+//
+// The "*." repoid glob is load-bearing. A bare `--setopt=metadata_expire=1h`
+// only writes dnf's [main] section, and a per-repo `metadata_expire` in
+// /etc/yum.repos.d/*.repo overrides [main] — which RHEL/Rocky/CentOS all set to
+// 6h in their stock rocky.repo/redhat.repo. So the unprefixed form is a silent
+// no-op on exactly the repos that matter most. Verified on Rocky 10:
+//
+//	--setopt=metadata_expire=1h     -> metadata_expire = 21600  (6h, unchanged)
+//	--setopt=*.metadata_expire=1h   -> metadata_expire = 3600   (1h, applied)
+const dnfMetadataExpireSetopt = "--setopt=*.metadata_expire=" + dnfMetadataExpire
+
+// dnfCacheDir returns the directory dnf should use for its metadata cache, or
+// "" to leave dnf's own default alone.
+//
+// Running as root we return "" so dnf uses /var/cache/dnf and shares the cache
+// that dnf-makecache.timer (and the admin's own dnf runs) keep warm.
+//
+// Running unprivileged dnf cannot write /var/cache/dnf, so it falls back to a
+// throwaway /var/tmp/dnf-$USER-XXXX directory. Under our systemd unit that is
+// doubly bad: PrivateTmp=true gives the service a private /var/tmp that is
+// destroyed on every restart, and with Restart=always the client re-downloads
+// tens of megabytes of repo metadata each time it comes back. Point dnf at the
+// service's StateDirectory instead so the cache actually persists.
+func dnfCacheDir() string {
+	if os.Geteuid() == 0 {
+		return ""
 	}
+
+	// systemd sets STATE_DIRECTORY from StateDirectory= (/var/lib/muc). It is
+	// colon-separated when several are configured; the first is ours.
+	if state := os.Getenv("STATE_DIRECTORY"); state != "" {
+		first, _, _ := strings.Cut(state, ":")
+		if first != "" {
+			return filepath.Join(first, "dnf")
+		}
+	}
+
+	if home := os.Getenv("HOME"); home != "" {
+		return filepath.Join(home, ".cache", "muc-dnf")
+	}
+	return ""
 }
 
+// dnfCheckUpdateArgs returns the arguments for the primary dnf check-update
+// invocation: the short metadata_expire that keeps results fresh, a persistent
+// cache directory, and --assumeno so a repo that wants an interactive GPG key
+// import fails fast instead of depending on stdin being closed.
+func dnfCheckUpdateArgs() []string {
+	args := []string{
+		"check-update",
+		"--assumeno",
+		"--setopt=skip_if_unavailable=True",
+		dnfMetadataExpireSetopt,
+	}
+	if dir := ensureDnfCacheDir(); dir != "" {
+		args = append(args, "--setopt=cachedir="+dir)
+	}
+	return args
+}
+
+// ensureDnfCacheDir creates the cache directory from dnfCacheDir if needed. A
+// failure is not fatal: we return "" and let dnf pick its own location rather
+// than failing the whole update check.
+func ensureDnfCacheDir() string {
+	dir := dnfCacheDir()
+	if dir == "" {
+		return ""
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		slog.Warn("Could not create dnf cache directory; falling back to dnf's default (cache will not persist across restarts)",
+			"dir", dir, "error", err)
+		return ""
+	}
+	return dir
+}
+
+// dnfSkippedRepoPatterns match the stderr dnf emits when skip_if_unavailable
+// swallows a repository failure. dnf still exits 0/100, so without scraping
+// these the client reports a silently incomplete package list as authoritative.
+var dnfSkippedRepoPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)^Ignoring repositories:\s*(.+)$`),
+	regexp.MustCompile(`Failed to download metadata for repo '([^']+)'`),
+	regexp.MustCompile(`Errors? during downloading metadata for repository '([^']+)'`),
+}
+
+// parseDnfSkippedRepos extracts the repositories dnf dropped because
+// skip_if_unavailable turned a metadata failure into a warning. Their packages
+// are missing from the result even though the command exited cleanly, so the
+// count is a lower bound rather than an answer.
+//
+// The common unprivileged trigger is repo_gpgcheck=1: verifying repomd.xml uses
+// a per-user GPG directory under the cache dir, not the system rpm keyring, so
+// dnf tries to import the key, cannot prompt, and drops the repo.
+func parseDnfSkippedRepos(stderr string) []string {
+	seen := make(map[string]bool)
+	var repos []string
+
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		repos = append(repos, name)
+	}
+
+	for _, re := range dnfSkippedRepoPatterns {
+		for _, m := range re.FindAllStringSubmatch(stderr, -1) {
+			// "Ignoring repositories:" lists several, comma- or space-separated.
+			for _, field := range strings.FieldsFunc(m[1], func(r rune) bool {
+				return r == ',' || r == ' ' || r == '\t'
+			}) {
+				add(field)
+			}
+		}
+	}
+
+	sort.Strings(repos)
+	return repos
+}
+
+// dnfPath is where the client looks for dnf. Also used as the "is this a dnf
+// host" probe, and by updates_yum.go to decide whether yum has been superseded.
+const dnfPath = "/usr/bin/dnf"
+
+// dnfFreshnessNotEnforced is recorded in SkippedRepos when every attempt to pin
+// metadata_expire failed, so the result came from whatever each repo's own
+// (typically 6h+) expiry left in cache.
+const dnfFreshnessNotEnforced = "(metadata freshness not enforced)"
+
+// dnfRunFunc is the shape of a check-update invocation: stdout, stderr, error.
+type dnfRunFunc func(args ...string) (stdout []byte, stderrOut string, err error)
+
+// dnfRunner is the seam tests replace to drive collectDnfUpdates without a real
+// dnf. Production always uses runDnfCheckUpdate.
+var dnfRunner dnfRunFunc = runDnfCheckUpdate
+
 // runDnfCheckUpdate runs dnf check-update with the given arguments and returns
-// stdout, or an error if the command fails with a non-100 exit code.
+// stdout plus stderr, or an error if the command fails with a non-100 exit code.
 // Exit code 100 means updates are available and is treated as success.
-func runDnfCheckUpdate(args ...string) ([]byte, error) {
-	cmd := exec.Command("/usr/bin/dnf", args...)
+//
+// stderr is returned even on success because that is where dnf reports the
+// repositories it silently skipped; see parseDnfSkippedRepos.
+func runDnfCheckUpdate(args ...string) (stdout []byte, stderrOut string, err error) {
+	cmd := exec.Command(dnfPath, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
@@ -44,49 +178,98 @@ func runDnfCheckUpdate(args ...string) ([]byte, error) {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() == 100 {
 				// Exit code 100 means updates are available — not an error
-				return out, nil
+				return out, stderr.String(), nil
 			}
 			slog.Error("dnf check-update failed", "error", err, "exitCode", exitError.ExitCode(), "stderr", stderr.String())
 		} else {
 			slog.Error("Error running dnf", "error", err, "stderr", stderr.String())
 		}
-		return nil, err
+		return nil, stderr.String(), err
 	}
-	return out, nil
+	return out, stderr.String(), nil
 }
 
 // getDnfUpdates fetches updates from dnf package manager
 func getDnfUpdates() UpdateResult {
-	var updates []Update
-	if _, err := os.Stat("/usr/bin/dnf"); err != nil {
-		debugLog("dnf not found", "path", "/usr/bin/dnf")
-		return UpdateResult{
-			Updates:         updates,
-			ManagerDetected: false,
-		}
+	if _, err := os.Stat(dnfPath); err != nil {
+		debugLog("dnf not found", "path", dnfPath)
+		return UpdateResult{ManagerDetected: false}
 	}
 
 	debugLog("Checking for dnf updates...")
+	return collectDnfUpdates(dnfRunner)
+}
 
-	// Try with --setopt first, fall back to plain check-update if it fails.
-	// The primary call forces a metadata refresh when the cache is stale so we
-	// don't under-report freshly-published updates.
-	out, err := runDnfCheckUpdate(dnfCheckUpdateArgs()...)
+// collectDnfUpdates drives the check-update invocation and turns it into a
+// result. It takes the runner as a parameter so the retry ladder and the
+// degraded/skipped bookkeeping can be exercised without a real dnf on the box.
+func collectDnfUpdates(run dnfRunFunc) UpdateResult {
+	// Try the full argument set first, then degrade one step at a time. Each
+	// fallback keeps the freshness flags (metadata_expire, cachedir) for as long
+	// as possible: dropping them silently reverts to each repo's own 6h+ expiry
+	// and a throwaway cache, which is the staleness this whole path exists to
+	// avoid. Only the last resort runs a bare check-update, and that run is
+	// recorded as degraded so an empty result is not trusted.
+	out, stderr, err := run(dnfCheckUpdateArgs()...)
+	degraded := false
 	if err != nil {
-		debugLog("Retrying dnf check-update without --setopt flags")
-		out, err = runDnfCheckUpdate("check-update")
+		debugLog("Retrying dnf check-update without skip_if_unavailable")
+		retry := []string{"check-update", "--assumeno", dnfMetadataExpireSetopt}
+		if dir := ensureDnfCacheDir(); dir != "" {
+			retry = append(retry, "--setopt=cachedir="+dir)
+		}
+		out, stderr, err = run(retry...)
+	}
+	if err != nil {
+		debugLog("Retrying bare dnf check-update; results may come from stale metadata")
+		degraded = true
+		out, stderr, err = run("check-update")
 	}
 	if err != nil {
 		// dnf is installed but check-update failed to run (e.g. read-only
 		// cache/log dir under a hardened sandbox). Report unknown, not "up to date".
 		return UpdateResult{
-			Updates:         updates,
 			ManagerDetected: true,
 			CheckFailed:     true,
 		}
 	}
 
+	// skip_if_unavailable turns an unreachable or unverifiable repo into a
+	// warning on stderr and a clean exit, so the package list silently omits
+	// everything that repo would have contributed.
+	skipped := parseDnfSkippedRepos(stderr)
+	if len(skipped) > 0 {
+		slog.Warn("dnf skipped repositories; the update list is incomplete",
+			"repos", skipped, "euid", os.Geteuid())
+	}
+	if degraded {
+		// We could not pin metadata_expire, so dnf answered from whatever its
+		// repos' own (typically 6h+) expiry left in cache. Flag it the same way
+		// as a skipped repo: the result is a lower bound, not an answer.
+		skipped = append(skipped, dnfFreshnessNotEnforced)
+	}
+
 	debugLog("Raw DNF output", "output", string(out))
+	updates := parseDnfUpdates(out)
+
+	debugLog("Found DNF updates", "count", len(updates), "skippedRepos", skipped)
+	return UpdateResult{
+		Updates:         updates,
+		ManagerDetected: true,
+		SkippedRepos:    skipped,
+	}
+}
+
+// parseDnfUpdates turns the stdout of `dnf check-update` into the list of
+// pending package updates.
+//
+// dnf interleaves progress, mirror status and metadata notices with the package
+// table on stdout, and there is no machine-readable mode we can rely on across
+// dnf4 and dnf5, so each line is validated field by field before it is accepted
+// as a package. The validators are deliberately conservative: a missed package
+// under-reports, but a false positive puts a nonexistent update on the dashboard.
+func parseDnfUpdates(out []byte) []Update {
+	var updates []Update
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 
 	for scanner.Scan() {
@@ -116,43 +299,40 @@ func getDnfUpdates() UpdateResult {
 
 		// A valid package line must have at least 3 fields:
 		// package-name    version-release    repository
-		if len(fields) >= 3 {
-			// Check each field individually first
-			debugLog("Validating package name", "name", fields[0])
-			if !isValidPackageName(fields[0]) {
-				debugLog("Invalid package name format", "name", fields[0])
-				continue
-			}
-
-			debugLog("Validating version", "version", fields[1])
-			if !isValidVersion(fields[1]) {
-				debugLog("Invalid version format", "version", fields[1])
-				continue
-			}
-
-			debugLog("Validating repository", "repository", fields[2])
-			if !isValidRepository(fields[2]) {
-				debugLog("Invalid repository format", "repository", fields[2])
-				continue
-			}
-
-			// If we get here, all fields are valid
-			debugLog("All fields valid, adding update", "name", fields[0], "version", fields[1], "source", fields[2])
-			updates = append(updates, Update{
-				Name:    fields[0],
-				Version: fields[1],
-				Source:  fields[2],
-			})
-		} else {
+		if len(fields) < 3 {
 			debugLog("Skipping line with insufficient fields", "line", line)
+			continue
 		}
+
+		// Check each field individually first
+		debugLog("Validating package name", "name", fields[0])
+		if !isValidPackageName(fields[0]) {
+			debugLog("Invalid package name format", "name", fields[0])
+			continue
+		}
+
+		debugLog("Validating version", "version", fields[1])
+		if !isValidVersion(fields[1]) {
+			debugLog("Invalid version format", "version", fields[1])
+			continue
+		}
+
+		debugLog("Validating repository", "repository", fields[2])
+		if !isValidRepository(fields[2]) {
+			debugLog("Invalid repository format", "repository", fields[2])
+			continue
+		}
+
+		// If we get here, all fields are valid
+		debugLog("All fields valid, adding update", "name", fields[0], "version", fields[1], "source", fields[2])
+		updates = append(updates, Update{
+			Name:    fields[0],
+			Version: fields[1],
+			Source:  fields[2],
+		})
 	}
 
-	debugLog("Found DNF updates", "count", len(updates))
-	return UpdateResult{
-		Updates:         updates,
-		ManagerDetected: true,
-	}
+	return updates
 }
 
 // isRepoStatusLine checks if a line is a repository status line

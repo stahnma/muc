@@ -10,6 +10,11 @@ Group=muc
 ExecStart=/usr/bin/muc-client
 Restart=always
 RestartSec=30
+# The client points dnf's cache at $STATE_DIRECTORY (/var/lib/muc). Running
+# unprivileged dnf cannot write /var/cache/dnf and otherwise falls back to a
+# /var/tmp/dnf-$USER-* directory that PrivateTmp below destroys on every restart
+# — which, with Restart=always, means re-downloading tens of megabytes of repo
+# metadata each time the service comes back.
 StateDirectory=muc
 # The client shells out to the system package manager (dnf/apt/yum) to check for
 # updates. Those tools must write to /var/cache, /var/lib and /var/log, so

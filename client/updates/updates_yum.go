@@ -13,7 +13,7 @@ func getYumUpdates() UpdateResult {
 	var updates []Update
 
 	// If DNF exists, skip YUM check since DNF is the successor
-	if _, err := os.Stat("/usr/bin/dnf"); err == nil {
+	if _, err := os.Stat(dnfPath); err == nil {
 		debugLog("DNF detected, skipping YUM update check")
 		return UpdateResult{
 			Updates:         updates,
@@ -31,8 +31,10 @@ func getYumUpdates() UpdateResult {
 
 	// Force a metadata refresh when the cache is stale (see dnfMetadataExpire)
 	// so we don't under-report freshly-published updates from cached metadata.
+	// The "*." repoid glob is required to beat per-repo metadata_expire settings
+	// in /etc/yum.repos.d; see dnfMetadataExpireSetopt.
 	out, err := exec.Command("/usr/bin/yum", "check-update",
-		"--setopt=metadata_expire="+dnfMetadataExpire).Output()
+		dnfMetadataExpireSetopt).Output()
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() != 100 {

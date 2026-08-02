@@ -47,6 +47,10 @@ func TestClientSystemdUnit(t *testing.T) {
 	assertContains(t, content, "Type=", "missing Type directive")
 	assertContains(t, content, "User=muc", "missing User=muc")
 	assertContains(t, content, "Restart=always", "missing Restart=always")
+	// The client pins dnf's cache to $STATE_DIRECTORY. Without StateDirectory an
+	// unprivileged dnf falls back to a /var/tmp dir that PrivateTmp destroys on
+	// every restart, forcing a full metadata re-download each time.
+	assertContains(t, content, "StateDirectory=muc", "missing StateDirectory=muc")
 }
 
 func TestShellScripts(t *testing.T) {

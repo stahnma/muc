@@ -44,6 +44,24 @@ func TestUpdateResultStatus(t *testing.T) {
 			wantAvailable: true,
 			wantUnknown:   false,
 		},
+		{
+			// dnf's skip_if_unavailable turns an unreachable or unverifiable
+			// repo into a warning and a clean exit, so an empty list here could
+			// equally mean "nothing pending" or "the skipped repo had them".
+			name:          "skipped repos with empty list is unknown, not up to date",
+			result:        UpdateResult{ManagerDetected: true, SkippedRepos: []string{"grafana"}},
+			wantAvailable: false,
+			wantUnknown:   true,
+		},
+		{
+			// Asymmetry on purpose: those updates really are pending regardless
+			// of what the skipped repo would have added, so report them and
+			// surface the skip as a warning rather than blanking the host out.
+			name:          "pending updates are still reported when a repo was skipped",
+			result:        UpdateResult{ManagerDetected: true, SkippedRepos: []string{"grafana"}, Updates: []Update{{Name: "openssl"}}},
+			wantAvailable: true,
+			wantUnknown:   false,
+		},
 	}
 
 	for _, tt := range tests {
