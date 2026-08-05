@@ -114,7 +114,7 @@ func ensureDnfCacheDir() string {
 	return dir
 }
 
-// dnfSkippedRepoPatterns match the stderr dnf emits when skip_if_unavailable
+// dnfSkippedRepoPatterns match the stderr dnf4 emits when skip_if_unavailable
 // swallows a repository failure. dnf still exits 0/100, so without scraping
 // these the client reports a silently incomplete package list as authoritative.
 var dnfSkippedRepoPatterns = []*regexp.Regexp{
@@ -122,6 +122,31 @@ var dnfSkippedRepoPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`Failed to download metadata for repo '([^']+)'`),
 	regexp.MustCompile(`Errors? during downloading metadata for repository '([^']+)'`),
 }
+
+// dnf5DiagnosticPattern matches how dnf5 (Fedora 41+) reports repository
+// trouble: a ">>> " prefixed line on stderr. None of the dnf4 phrasings above
+// appear, so a dnf5 host was silently reporting an incomplete package list as a
+// confident "up to date" until these were handled.
+//
+// dnf5 does not name the offending repository in these messages — unlike dnf4,
+// which quotes the repoid — so the descriptor falls back to the server hostname
+// from the URL, or to the message itself. Less precise than a repoid, but it
+// still tells an operator the count is incomplete and why.
+var dnf5DiagnosticPattern = regexp.MustCompile(`(?m)^>>>\s*(.+?)\s*$`)
+
+// dnf5URLPattern pulls the host out of a dnf5 diagnostic so the warning can name
+// something recognisable rather than a bare error string.
+var dnf5URLPattern = regexp.MustCompile(`https?://([^/\s\]]+)`)
+
+const (
+	// dnf5KeyMissing is emitted before dnf5 offers to import a repo signing key.
+	// It appears even when the import then succeeds and the repo loads fine, so
+	// on its own it does NOT mean the repo was skipped.
+	dnf5KeyMissing = "Signing key not found"
+	// dnf5KeyImported is dnf5's confirmation that the import above went through,
+	// which retroactively makes the preceding dnf5KeyMissing diagnostic benign.
+	dnf5KeyImported = "The key was successfully imported"
+)
 
 // parseDnfSkippedRepos extracts the repositories dnf dropped because
 // skip_if_unavailable turned a metadata failure into a warning. Their packages
@@ -155,8 +180,45 @@ func parseDnfSkippedRepos(stderr string) []string {
 		}
 	}
 
+	// dnf5 speaks differently; see dnf5DiagnosticPattern.
+	keyImported := strings.Contains(stderr, dnf5KeyImported)
+	for _, m := range dnf5DiagnosticPattern.FindAllStringSubmatch(stderr, -1) {
+		msg := m[1]
+		// A missing signing key that dnf5 then imported successfully is not a
+		// skipped repo — the repo loads. Without this every host's first contact
+		// with a new repo would raise a false warning.
+		if strings.Contains(msg, dnf5KeyMissing) && keyImported {
+			continue
+		}
+		add(dnf5RepoDescriptor(msg))
+	}
+
 	sort.Strings(repos)
 	return repos
+}
+
+// dnf5RepoDescriptor turns a dnf5 diagnostic into the most identifiable label
+// available: the server hostname when the message carries a URL, otherwise the
+// message itself. dnf5 never includes the repoid, so this is the best handle an
+// operator gets from stderr alone.
+func dnf5RepoDescriptor(msg string) string {
+	if m := dnf5URLPattern.FindStringSubmatch(msg); m != nil {
+		return m[1] + " (" + dnf5Reason(msg) + ")"
+	}
+	return dnf5Reason(msg)
+}
+
+// dnf5Reason trims a diagnostic down to its cause, dropping the repeated URL
+// and bracketed curl detail that would otherwise make the warning unreadable on
+// the dashboard.
+func dnf5Reason(msg string) string {
+	if i := strings.Index(msg, " for http"); i > 0 {
+		msg = msg[:i]
+	}
+	if i := strings.Index(msg, " ["); i > 0 {
+		msg = msg[:i]
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(msg), ":"))
 }
 
 // dnfPath is where the client looks for dnf. Also used as the "is this a dnf
@@ -178,7 +240,11 @@ var dnfRunner dnfRunFunc = runDnfCheckUpdate
 // dnfImportedKeyPattern matches dnf's announcement that it is adopting a
 // repository signing key. Because the client passes -y, that adoption happens
 // without anyone confirming it, so it is logged to leave an audit trail.
-var dnfImportedKeyPattern = regexp.MustCompile(`Importing GPG key (0x[0-9A-Fa-f]+)`)
+//
+// dnf4 says "Importing GPG key 0x...", dnf5 says "Importing OpenPGP key 0x...".
+// Matching only dnf4's wording left the audit trail empty on Fedora hosts —
+// precisely where keys were being adopted silently.
+var dnfImportedKeyPattern = regexp.MustCompile(`Importing (?:GPG|OpenPGP) key (0x[0-9A-Fa-f]+)`)
 
 // parseDnfImportedKeys extracts the key IDs dnf imported during a check. An
 // import is normal on a host's first sight of a repo and should be rare after

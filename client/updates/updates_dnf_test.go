@@ -81,6 +81,16 @@ func TestParseDnfImportedKeys(t *testing.T) {
 			stderr: "Importing GPG key 0x10458545:\nImporting GPG key 0xA621E701:\nImporting GPG key 0x10458545:",
 			want:   []string{"0x10458545", "0xA621E701"},
 		},
+		{
+			// dnf5's wording. Matching only dnf4's left the audit trail empty on
+			// Fedora hosts, which is exactly where keys get adopted silently.
+			name: "dnf5 says OpenPGP rather than GPG",
+			stderr: `>>> repomd.xml GPG signature verification error: Signing key not found
+Importing OpenPGP key 0x10458545:
+ UserID     : "Grafana Labs <engineering@grafana.com>"
+The key was successfully imported.`,
+			want: []string{"0x10458545"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -183,6 +193,55 @@ Ignoring repositories: grafana`,
 		{
 			name:   "unrelated warnings are not repos",
 			stderr: "Last metadata expiration check: 0:03:11 ago.\nwarning: /var/cache/dnf is not writable",
+			want:   nil,
+		},
+
+		// dnf5 (Fedora 41+) shares none of the phrasings above: it reports
+		// repository trouble as ">>> " lines and never names the repo. These
+		// samples are verbatim from a Fedora 44 host running the client's own
+		// argument set. Until they were handled, dnf5 hosts silently reported an
+		// incomplete package list as a confident "up to date".
+		{
+			name: "dnf5 key declined means the repo really was skipped",
+			stderr: `Updating and loading repositories:
+>>> repomd.xml GPG signature verification error: Signing key not found
+>>> repomd.xml GPG signature verification error: Signing key not found
+Repositories loaded.`,
+			want: []string{"repomd.xml GPG signature verification error: Signing key not found"},
+		},
+		{
+			// The same diagnostic appears on a run that then imports the key and
+			// loads the repo fine. Flagging it would raise a false warning on
+			// every host's first contact with a new repo.
+			name: "dnf5 key imported successfully is not a skipped repo",
+			stderr: `Updating and loading repositories:
+>>> repomd.xml GPG signature verification error: Signing key not found
+Importing OpenPGP key 0x10458545:
+ UserID     : "Grafana Labs <engineering@grafana.com>"
+ From       : https://rpm.grafana.com/gpg.key
+The key was successfully imported.
+Repositories loaded.`,
+			want: nil,
+		},
+		{
+			name: "dnf5 unreachable repo is named by host",
+			stderr: `Updating and loading repositories:
+>>> Curl error (7): Could not connect to server for http://mirror.example.com/repodata/repomd.xml [Failed to connect] - http://mirror.example.com/repodata/repomd.xml
+>>> Curl error (7): Could not connect to server for http://mirror.example.com/repodata/repomd.xml [Failed to connect] - http://mirror.example.com/repodata/repomd.xml
+Repositories loaded.`,
+			want: []string{"mirror.example.com (Curl error (7): Could not connect to server)"},
+		},
+		{
+			// A bad signature is not recoverable by importing a key, so even
+			// alongside a successful import elsewhere it must still be reported.
+			name: "dnf5 bad signature is reported even when another key imported",
+			stderr: `>>> repomd.xml GPG signature verification error: Bad PGP signature
+The key was successfully imported.`,
+			want: []string{"repomd.xml GPG signature verification error: Bad PGP signature"},
+		},
+		{
+			name:   "dnf5 clean run",
+			stderr: "Updating and loading repositories:\nRepositories loaded.",
 			want:   nil,
 		},
 	}
