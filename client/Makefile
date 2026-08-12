@@ -33,7 +33,6 @@ linux: fmt
 	@echo "Building Linux binaries..."
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(NAME).linux.amd64 .
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(NAME).linux.arm64 .
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(NAME).linux.arm .
 
 # Development targets
 fmt:

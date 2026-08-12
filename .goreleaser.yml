@@ -25,10 +25,7 @@ builds:
     goarch:
       - amd64
       - arm64
-      - arm
     ignore:
-      - goos: darwin
-        goarch: arm
       - goos: darwin
         goarch: amd64
     ldflags:

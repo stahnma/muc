@@ -105,7 +105,6 @@ rerun:
 	rm -f server/systems.db
 	$(MAKE) -C client linux
 	$(MAKE) -C server build
-	cp -pr client/muc-client.linux.arm ~
 	cp -pr client/muc-client.linux.amd64 ~
 	scp client/muc-client.linux.amd64 stahnma@rog:muc-client.linux.amd64
 

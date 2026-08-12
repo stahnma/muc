@@ -17,7 +17,7 @@ This project monitors system updates across multiple machines in your network:
 
 ### Platforms
 - macOS (darwin)
-- Linux (ARM, ARM64, x86_64)
+- Linux (ARM64, x86_64)
 
 ## Architecture
 
@@ -41,7 +41,7 @@ make server    # Build server only
 
 ### Cross-Compilation
 ```bash
-make linux     # Build Linux binaries for all architectures (ARM, ARM64, AMD64)
+make linux     # Build Linux binaries for all architectures (ARM64, AMD64)
 make linux-all # Build both client and server for all Linux architectures
 ```
 
