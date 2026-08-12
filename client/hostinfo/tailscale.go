@@ -3,8 +3,11 @@ package hostinfo
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -42,6 +45,14 @@ type TailscaleInfo struct {
 // be held up by it.
 const tailscaleStatusTimeout = 5 * time.Second
 
+// tailscaleSockets are the paths tailscaled listens on for its local API. The
+// socket is world-accessible on Linux, so the service user can read status from
+// it without the CLI being installed anywhere it can reach.
+var tailscaleSockets = []string{
+	"/var/run/tailscale/tailscaled.sock",
+	"/run/tailscale/tailscaled.sock",
+}
+
 // tailscaleBinaries are the install locations to try when the CLI is not on
 // PATH. The client runs as an unprivileged service user whose PATH is minimal,
 // and on macOS the CLI lives inside the app bundle rather than in a bin dir.
@@ -63,13 +74,22 @@ var cgnatRange = &net.IPNet{IP: net.IPv4(100, 64, 0, 0).To4(), Mask: net.CIDRMas
 // TailscaleStatus reports the host's tailnet membership, or nil if the host has
 // no tailnet identity to report.
 //
-// The authoritative source is `tailscale status --json`, which is the only way
-// to learn *which* tailnet the host is on. Where that is unavailable — the CLI
-// is not installed where we look, or the local API socket is not readable by
-// the service user — a tailnet-addressed interface still proves the host is
-// connected, so fall back to that and report membership without a name rather
-// than reporting nothing.
+// Three sources are tried in order of how much they can tell us:
+//
+//  1. tailscaled's local API socket. This is the primary source because it
+//     needs nothing installed for the client to reach — the CLI is often
+//     absent from any path an unprivileged, ProtectHome=true service can see
+//     (a nix, flox, or Homebrew install, say), and it is exactly those hosts
+//     that would otherwise go unnamed.
+//  2. `tailscale status --json`, for hosts where the socket is not where we
+//     look for it — notably macOS.
+//  3. A tailnet address on a Tailscale interface. This proves the host is
+//     connected but cannot say to which tailnet, so it is a last resort:
+//     better a dot with no name than no dot at all.
 func TailscaleStatus() *TailscaleInfo {
+	if info := tailscaleFromLocalAPI(); info != nil {
+		return info
+	}
 	if bin := findTailscaleBinary(); bin != "" {
 		out, err := runTailscaleStatus(bin)
 		if err != nil {
@@ -79,6 +99,59 @@ func TailscaleStatus() *TailscaleInfo {
 		}
 	}
 	return tailscaleFromInterfaces()
+}
+
+// tailscaleFromLocalAPI asks tailscaled directly over its unix socket. It
+// returns the same payload the CLI prints, without needing the CLI.
+func tailscaleFromLocalAPI() *TailscaleInfo {
+	for _, socket := range tailscaleSockets {
+		if _, err := os.Stat(socket); err != nil {
+			continue
+		}
+		data, err := queryTailscaleLocalAPI(socket)
+		if err != nil {
+			slog.Debug("Failed to query tailscaled local API", "socket", socket, "error", err)
+			continue
+		}
+		if info := parseTailscaleStatus(data); info != nil {
+			return info
+		}
+	}
+	return nil
+}
+
+func queryTailscaleLocalAPI(socket string) ([]byte, error) {
+	client := &http.Client{
+		Timeout: tailscaleStatusTimeout,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var dialer net.Dialer
+				return dialer.DialContext(ctx, "unix", socket)
+			},
+		},
+	}
+
+	// The host in the URL is a fixed name tailscaled expects rather than a real
+	// one; the connection goes to the socket dialled above.
+	req, err := http.NewRequest(http.MethodGet, "http://local-tailscaled.sock/localapi/v0/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	// Marks this as a deliberate local API call, which newer tailscaled builds
+	// require before they will answer.
+	req.Header.Set("Sec-Tailscale", "localapi")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tailscaled local API returned %s", resp.Status)
+	}
+	// A tailnet with many peers makes for a large status; cap what we read so a
+	// misbehaving daemon cannot balloon the client's memory.
+	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 }
 
 func findTailscaleBinary() string {

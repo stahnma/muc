@@ -1,6 +1,75 @@
 package hostinfo
 
-import "testing"
+import (
+	"net"
+	"net/http"
+	"path/filepath"
+	"testing"
+)
+
+// TestQueryTailscaleLocalAPI covers the source that matters most in practice:
+// hosts where the CLI is installed somewhere the service user cannot reach (a
+// nix, flox or Homebrew tree, or behind ProtectHome=true) still get a named
+// tailnet, because the daemon's socket answers without any CLI at all.
+func TestQueryTailscaleLocalAPI(t *testing.T) {
+	// macOS caps unix socket paths at ~104 bytes and t.TempDir() is long, so
+	// keep the name short.
+	socket := filepath.Join(t.TempDir(), "s.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Skipf("unix sockets unavailable: %v", err)
+	}
+	defer listener.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/localapi/v0/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Sec-Tailscale") != "localapi" {
+			t.Errorf("Sec-Tailscale header = %q, want %q", r.Header.Get("Sec-Tailscale"), "localapi")
+		}
+		w.Write([]byte(`{"BackendState":"Running","HaveNodeKey":true,
+			"TailscaleIPs":["100.126.136.109"],
+			"CurrentTailnet":{"Name":"example.com","MagicDNSSuffix":"tail2ad946.ts.net"}}`))
+	})
+	server := &http.Server{Handler: mux}
+	go server.Serve(listener)
+	defer server.Close()
+
+	data, err := queryTailscaleLocalAPI(socket)
+	if err != nil {
+		t.Fatalf("queryTailscaleLocalAPI: %v", err)
+	}
+	info := parseTailscaleStatus(data)
+	if info == nil {
+		t.Fatal("parseTailscaleStatus returned nil for the local API response")
+	}
+	if !info.Connected || info.Tailnet != "example.com" {
+		t.Errorf("got %+v, want connected on example.com", info)
+	}
+}
+
+func TestQueryTailscaleLocalAPIErrors(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "s.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Skipf("unix sockets unavailable: %v", err)
+	}
+	defer listener.Close()
+
+	// A daemon that answers with anything but 200 must not be mistaken for a
+	// host with no tailnet — the caller falls through to its other sources.
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no", http.StatusForbidden)
+	})}
+	go server.Serve(listener)
+	defer server.Close()
+
+	if _, err := queryTailscaleLocalAPI(socket); err == nil {
+		t.Error("queryTailscaleLocalAPI returned no error for a 403 response")
+	}
+	if _, err := queryTailscaleLocalAPI(filepath.Join(t.TempDir(), "missing.sock")); err == nil {
+		t.Error("queryTailscaleLocalAPI returned no error for a missing socket")
+	}
+}
 
 func TestParseTailscaleStatusRunning(t *testing.T) {
 	data := []byte(`{

@@ -422,33 +422,42 @@ document.addEventListener("DOMContentLoaded", () => {
         return parts.join(' · ');
     }
 
-    // Render the tailnet dot shown beside a hostname. Hosts that have never
-    // reported tailnet membership get nothing, so a fleet that does not use
-    // Tailscale never sees this at all.
-    function tailnetIndicator(system) {
+    // Render the tailnet dot that leads a hostname cell.
+    //
+    // The dot sits in a fixed-width slot so hostnames line up down the column
+    // whether or not a given host has one. The slot is only laid out at all
+    // when some host in the table reports a tailnet — a fleet that does not use
+    // Tailscale gets neither dots nor the space they would occupy. The slot,
+    // not the 8px dot, carries the tooltip: it is a much easier hover target.
+    function tailnetIndicator(system, reserveSlot) {
+        if (!reserveSlot) return '';
         const ts = system && system.tailscale;
-        if (!ts) return '';
+        if (!ts) return '<span class="tailnet-slot"></span>';
         const tooltip = tailnetTooltip(ts);
-        return ` <span class="tailnet-indicator${ts.connected ? ' connected' : ''}" role="img"` +
-            ` title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}"></span>`;
+        return `<span class="tailnet-slot" role="img" title="${escapeHtml(tooltip)}"` +
+            ` aria-label="${escapeHtml(tooltip)}">` +
+            `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}"></span></span>`;
     }
 
-    // Spell out in the expanded details what the dot only hints at.
+    // Spell out in the expanded details what the dot only hints at, leading
+    // with the tailnet name — that is the part a dot cannot convey.
     function tailnetDetail(system) {
         const ts = system && system.tailscale;
         if (!ts) return '';
         const name = tailnetName(ts);
-        let label;
+        const parts = [];
         if (ts.connected) {
-            label = name || 'connected';
-            if (ts.ip) label += ` · ${ts.ip}`;
+            parts.push(name || 'connected (tailnet name unavailable)');
+            if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) parts.push(`(${ts.magic_dns_suffix})`);
+            if (ts.ip) parts.push(`· ${ts.ip}`);
         } else {
-            label = name ? `not connected · last on ${name}` : 'not connected';
+            parts.push(name ? `${name} — not connected` : 'not connected');
             const reason = tailnetStateReason(ts.state);
-            if (reason) label += ` · ${reason}`;
+            if (reason) parts.push(`· ${reason}`);
+            if (ts.last_connected_at) parts.push(`· last connected ${formatRelativeTime(ts.last_connected_at)}`);
         }
-        return `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}" role="img"` +
-            ` title="${escapeHtml(tailnetTooltip(ts))}"></span> ${escapeHtml(label)}`;
+        return `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}"></span>` +
+            ` ${escapeHtml(parts.join(' '))}`;
     }
 
     // Get OS icon based on OS name
@@ -570,6 +579,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+        // Lay out the tailnet slot only when the fleet actually uses Tailscale,
+        // so hostnames line up with each other either way.
+        const showTailnetSlot = systems.some(system => system && system.tailscale);
+
         // Generate table rows
         try {
             const rows = systems
@@ -592,7 +605,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${system.hostname}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
-                        <td>${escapeHtml(system.hostname)}${system.reboot_required ? ' <span class="reboot-indicator" title="Reboot required">⟳</span>' : ''}${tailnetIndicator(system)}</td>
+                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${system.reboot_required ? ' <span class="reboot-indicator" title="Reboot required">⟳</span>' : ''}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>

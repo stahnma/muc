@@ -611,10 +611,27 @@ th.sortable.descending::after {
     cursor: help;
 }
 
-/* Tailnet membership dot beside the hostname. Green when the host is on a
-   tailnet right now, grey when it belongs to one but is not connected. Hosts
-   that have never reported tailnet membership render no dot at all, so this is
-   invisible to fleets that do not use Tailscale. */
+/* Fixed-width gutter the tailnet dot sits in, ahead of the hostname. Holding
+   the width whether or not the host has a dot keeps hostnames aligned down the
+   column, and it gives the 8px dot a hover target big enough to land on. */
+.tailnet-slot {
+    display: inline-block;
+    width: 16px;
+    height: 1.5em;
+    line-height: 1.5em;
+    vertical-align: middle;
+    cursor: help;
+}
+
+/* An empty slot is spacing, not something to hover. */
+.tailnet-slot:empty {
+    cursor: default;
+}
+
+/* Tailnet membership dot. Green when the host is on a tailnet right now, grey
+   when it belongs to one but is not connected. Hosts that have never reported
+   tailnet membership render no dot at all, so this is invisible to fleets that
+   do not use Tailscale. */
 .tailnet-indicator {
     display: inline-block;
     width: 8px;
@@ -623,7 +640,11 @@ th.sortable.descending::after {
     vertical-align: middle;
     background: var(--text-secondary);
     opacity: 0.45;
-    cursor: help;
+}
+
+/* Standalone in the expanded details, where it needs its own spacing. */
+.system-info .tailnet-indicator {
+    margin-right: 6px;
 }
 
 .tailnet-indicator.connected {

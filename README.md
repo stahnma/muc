@@ -282,18 +282,22 @@ The web dashboard provides:
 
 ### Tailnet status
 
-Hosts that are on a [Tailscale](https://tailscale.com) tailnet get a dot beside
+Hosts that are on a [Tailscale](https://tailscale.com) tailnet get a dot ahead of
 their hostname: green when the host is on a tailnet right now, grey when it
 belongs to one but is not connected. Hovering the dot names the tailnet, which is
 the point of the indicator — a host can belong to several tailnets but can only
 be joined to one at a time. The expanded row spells the same thing out as a
-**Tailnet** field.
+**Tailnet** field. The dot sits in a fixed-width gutter, so hostnames stay
+aligned whether or not a given host has one.
 
-Nothing needs to be configured. The client detects membership on its own by
-asking `tailscale status --json`, and falls back to looking for a tailnet address
-on a Tailscale interface where that is unavailable (the CLI is not installed
-where the client looks, or the local API socket is not readable by the service
-user) — that proves the host is connected but cannot name the tailnet.
+Nothing needs to be configured. The client asks tailscaled directly over its
+local API socket (`/run/tailscale/tailscaled.sock`), which is readable by the
+unprivileged `muc` user and needs no CLI on the host — the `tailscale` binary is
+often somewhere a hardened service cannot reach, such as a nix, flox or Homebrew
+tree, or behind the unit's `ProtectHome=true`. Where the socket is not where the
+client looks, notably on macOS, it falls back to `tailscale status --json`, and
+failing that to looking for a tailnet address on a Tailscale interface — which
+proves the host is connected but cannot name the tailnet.
 
 Hosts that have never been seen on a tailnet report nothing at all and show no
 dot, so a fleet that does not use Tailscale never sees this feature. The reverse
