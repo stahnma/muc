@@ -62,6 +62,10 @@ type System struct {
 	MemoryTotalBytes    uint64   `json:"memory_total_bytes"`
 	UptimeSeconds       uint64   `json:"uptime_seconds"`
 	RebootRequired      bool     `json:"reboot_required"`
+	// Tailscale is omitted entirely for hosts with no tailnet membership to
+	// report, which is what keeps the dashboard silent about tailnets for
+	// fleets that do not use one.
+	Tailscale *hostinfo.TailscaleInfo `json:"tailscale,omitempty"`
 }
 
 // Collects all system data to prepare for publishing
@@ -147,6 +151,7 @@ func collectSystemData() (System, error) {
 	system.MemoryTotalBytes = hw.MemoryTotalBytes
 	system.UptimeSeconds = hw.UptimeSeconds
 	system.RebootRequired = hw.RebootRequired
+	system.Tailscale = hw.Tailscale
 
 	return system, nil
 }

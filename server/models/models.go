@@ -26,6 +26,9 @@ type System struct {
 	MemoryTotalBytes    uint64   `json:"memory_total_bytes"`
 	UptimeSeconds       uint64   `json:"uptime_seconds"`
 	RebootRequired      bool     `json:"reboot_required"`
+	// Tailscale is nil until a host reports tailnet membership, and stays
+	// non-nil afterwards — see MergeTailscale.
+	Tailscale *Tailscale `json:"tailscale,omitempty"`
 }
 
 type Update struct {

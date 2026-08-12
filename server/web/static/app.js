@@ -383,6 +383,74 @@ document.addEventListener("DOMContentLoaded", () => {
         return system.update_check_warnings.join('; ');
     }
 
+    // Explain a disconnected tailnet dot in the host's own terms.
+    function tailnetStateReason(state) {
+        switch (state) {
+            case 'Stopped': return 'Tailscale is stopped';
+            case 'NeedsLogin': return 'Tailscale is logged out';
+            case 'Starting':
+            case 'NoState': return 'Tailscale is starting up';
+            case 'unreported': return 'host is no longer reporting Tailscale';
+            default: return '';
+        }
+    }
+
+    // Best available name for the tailnet a host belongs to: the current one
+    // when connected, otherwise the one it was last seen on.
+    function tailnetName(ts) {
+        if (!ts) return '';
+        if (ts.connected) return ts.tailnet || ts.magic_dns_suffix || '';
+        return ts.last_tailnet || ts.tailnet || ts.magic_dns_suffix || '';
+    }
+
+    // Hover text for the tailnet dot. A host can belong to several tailnets but
+    // join only one at a time, so naming the tailnet is the whole point of the
+    // indicator — the dot alone only says connected or not.
+    function tailnetTooltip(ts) {
+        const name = tailnetName(ts);
+        const parts = [];
+        if (ts.connected) {
+            parts.push(name ? `On tailnet ${name}` : 'On a tailnet (name unavailable)');
+            if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) parts.push(ts.magic_dns_suffix);
+            if (ts.ip) parts.push(ts.ip);
+        } else {
+            parts.push(name ? `Not on a tailnet — last seen on ${name}` : 'Not on a tailnet');
+            if (ts.last_connected_at) parts.push(`last connected ${formatRelativeTime(ts.last_connected_at)}`);
+            const reason = tailnetStateReason(ts.state);
+            if (reason) parts.push(reason);
+        }
+        return parts.join(' · ');
+    }
+
+    // Render the tailnet dot shown beside a hostname. Hosts that have never
+    // reported tailnet membership get nothing, so a fleet that does not use
+    // Tailscale never sees this at all.
+    function tailnetIndicator(system) {
+        const ts = system && system.tailscale;
+        if (!ts) return '';
+        const tooltip = tailnetTooltip(ts);
+        return ` <span class="tailnet-indicator${ts.connected ? ' connected' : ''}" role="img"` +
+            ` title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}"></span>`;
+    }
+
+    // Spell out in the expanded details what the dot only hints at.
+    function tailnetDetail(system) {
+        const ts = system && system.tailscale;
+        if (!ts) return '';
+        const name = tailnetName(ts);
+        let label;
+        if (ts.connected) {
+            label = name || 'connected';
+            if (ts.ip) label += ` · ${ts.ip}`;
+        } else {
+            label = name ? `not connected · last on ${name}` : 'not connected';
+            const reason = tailnetStateReason(ts.state);
+            if (reason) label += ` · ${reason}`;
+        }
+        return `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}" role="img"` +
+            ` title="${escapeHtml(tailnetTooltip(ts))}"></span> ${escapeHtml(label)}`;
+    }
+
     // Get OS icon based on OS name
     function getOSIcon(os) {
         if (!os) return '';
@@ -524,7 +592,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${system.hostname}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
-                        <td>${escapeHtml(system.hostname)}${system.reboot_required ? ' <span class="reboot-indicator" title="Reboot required">⟳</span>' : ''}</td>
+                        <td>${escapeHtml(system.hostname)}${system.reboot_required ? ' <span class="reboot-indicator" title="Reboot required">⟳</span>' : ''}${tailnetIndicator(system)}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
@@ -687,6 +755,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     ['CPU', data.cpu_model ? escapeHtml(data.cpu_model) : ''],
                     ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
                     ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
+                    ['Tailnet', tailnetDetail(data)],
                     // When the package manager was actually queried, as opposed
                     // to Last Seen in the table, which is when the server last
                     // heard from the host.

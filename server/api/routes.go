@@ -13,22 +13,23 @@ import (
 )
 
 type SystemSummary struct {
-	Hostname            string          `json:"hostname"`
-	Architecture        string          `json:"architecture"`
-	Ip                  string          `json:"ip"`
-	OS                  string          `json:"os"`
-	OSVersion           string          `json:"os_version"`
-	UpdatesAvailable    bool            `json:"updates_available"`
-	UpdateStatusUnknown bool            `json:"update_status_unknown"`
-	LastSeen            string          `json:"last_seen"`
-	UpdatesCheckedAt    string          `json:"updates_checked_at"`
-	UpdateCheckWarnings []string        `json:"update_check_warnings,omitempty"`
-	PendingUpdates      []models.Update `json:"pending_updates"`
-	CPUModel            string          `json:"cpu_model"`
-	CPUCores            int             `json:"cpu_cores"`
-	MemoryTotalBytes    uint64          `json:"memory_total_bytes"`
-	UptimeSeconds       uint64          `json:"uptime_seconds"`
-	RebootRequired      bool            `json:"reboot_required"`
+	Hostname            string            `json:"hostname"`
+	Architecture        string            `json:"architecture"`
+	Ip                  string            `json:"ip"`
+	OS                  string            `json:"os"`
+	OSVersion           string            `json:"os_version"`
+	UpdatesAvailable    bool              `json:"updates_available"`
+	UpdateStatusUnknown bool              `json:"update_status_unknown"`
+	LastSeen            string            `json:"last_seen"`
+	UpdatesCheckedAt    string            `json:"updates_checked_at"`
+	UpdateCheckWarnings []string          `json:"update_check_warnings,omitempty"`
+	PendingUpdates      []models.Update   `json:"pending_updates"`
+	CPUModel            string            `json:"cpu_model"`
+	CPUCores            int               `json:"cpu_cores"`
+	MemoryTotalBytes    uint64            `json:"memory_total_bytes"`
+	UptimeSeconds       uint64            `json:"uptime_seconds"`
+	RebootRequired      bool              `json:"reboot_required"`
+	Tailscale           *models.Tailscale `json:"tailscale,omitempty"`
 }
 
 // GetSystemsHandler returns a JSON list of systems with pending updates details
@@ -62,6 +63,7 @@ func GetSystemsHandler(store storage.Storage) http.HandlerFunc {
 				MemoryTotalBytes:    system.MemoryTotalBytes,
 				UptimeSeconds:       system.UptimeSeconds,
 				RebootRequired:      system.RebootRequired,
+				Tailscale:           system.Tailscale,
 			})
 		}
 

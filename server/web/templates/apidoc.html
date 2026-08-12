@@ -50,6 +50,15 @@
     "update_status_unknown": false,
     "last_seen": "2024-01-15T10:30:00Z",
     "updates_checked_at": "2024-01-15T10:29:58Z",
+    "tailscale": {
+      "connected": true,
+      "tailnet": "example.com",
+      "magic_dns_suffix": "tail2ad946.ts.net",
+      "ip": "100.64.0.7",
+      "state": "Running",
+      "last_tailnet": "example.com",
+      "last_connected_at": "2024-01-15T10:29:58Z"
+    },
     "pending_updates": [
       {
         "name": "nginx",
@@ -277,7 +286,21 @@ curl http://localhost:8080/metrics</div>
                     <strong>last_seen</strong> (string): ISO 8601 timestamp of last system check-in, stamped by the server on receipt. Means the host is reachable, not that its update data is current<br>
                     <strong>updates_checked_at</strong> (string): ISO 8601 UTC timestamp of when the client actually queried its package manager. Compare against <code>last_seen</code> to tell a freshly-checked host from one that keeps checking in while its update data goes stale<br>
                     <strong>update_check_warnings</strong> (array, optional): Ways the check was incomplete without failing outright — repositories the package manager silently skipped, for instance. When present, <code>pending_updates</code> is a lower bound rather than a complete answer<br>
-                    <strong>pending_updates</strong> (array): Array of Update objects
+                    <strong>pending_updates</strong> (array): Array of Update objects<br>
+                    <strong>tailscale</strong> (object, optional): Tailnet membership. Absent for hosts that have never been seen on a tailnet, which is what keeps the dashboard free of tailnet indicators for fleets that do not use Tailscale. See the Tailscale object below
+                </div>
+            </div>
+
+            <div class="param">
+                <div class="param-name">Tailscale</div>
+                <div class="param-desc">
+                    <strong>connected</strong> (boolean): Whether the host was on a tailnet at its last check-in<br>
+                    <strong>tailnet</strong> (string, optional): Tailnet name, e.g. "example.com" or the owning account. A host may belong to several tailnets but can be joined to only one at a time<br>
+                    <strong>magic_dns_suffix</strong> (string, optional): MagicDNS suffix of the tailnet, e.g. "tail2ad946.ts.net". Identifies the tailnet when <code>tailnet</code> is unavailable<br>
+                    <strong>ip</strong> (string, optional): The host's IPv4 address on the tailnet<br>
+                    <strong>state</strong> (string, optional): tailscaled's backend state ("Running", "Stopped", "NeedsLogin", …), or "unreported" when a host that was previously on a tailnet has stopped reporting Tailscale at all<br>
+                    <strong>last_tailnet</strong> (string, optional): Most recent tailnet the host was seen on. Server-maintained, so a disconnected host can still say which tailnet it belongs to<br>
+                    <strong>last_connected_at</strong> (string, optional): ISO 8601 UTC timestamp of when the host was last seen connected. Server-maintained
                 </div>
             </div>
 

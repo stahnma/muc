@@ -84,8 +84,18 @@ func StartSubscriber(store storage.Storage, natsURL string) {
 		}
 
 		// Check if this is a first-time check-in
-		_, getErr := store.GetSystem(system.Hostname)
+		previous, getErr := store.GetSystem(system.Hostname)
 		isFirstTime := getErr != nil
+
+		// Tailnet membership is remembered across check-ins: a host that has
+		// left its tailnet — or a client that stopped reporting one — keeps the
+		// tailnet it was last seen on, so it shows as disconnected instead of
+		// losing its indicator entirely.
+		var previousTailscale *models.Tailscale
+		if !isFirstTime {
+			previousTailscale = previous.Tailscale
+		}
+		system.Tailscale = models.MergeTailscale(previousTailscale, system.Tailscale, time.Now())
 
 		// Store the system data
 		slog.Debug("Calling SaveSystem", "hostname", system.Hostname)

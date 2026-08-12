@@ -611,6 +611,26 @@ th.sortable.descending::after {
     cursor: help;
 }
 
+/* Tailnet membership dot beside the hostname. Green when the host is on a
+   tailnet right now, grey when it belongs to one but is not connected. Hosts
+   that have never reported tailnet membership render no dot at all, so this is
+   invisible to fleets that do not use Tailscale. */
+.tailnet-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: var(--text-secondary);
+    opacity: 0.45;
+    cursor: help;
+}
+
+.tailnet-indicator.connected {
+    background: var(--accent-green);
+    opacity: 1;
+}
+
 /* System information block inside the expanded per-host details. */
 .system-info {
     margin-top: 16px;

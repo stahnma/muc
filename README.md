@@ -278,6 +278,29 @@ The web dashboard provides:
 - Expandable rows to view detailed update information
 - Last seen timestamps, plus when the update data itself was collected
 - Warnings when an update check was incomplete (e.g. a repository was skipped)
+- Tailnet status for hosts that use Tailscale (see below)
+
+### Tailnet status
+
+Hosts that are on a [Tailscale](https://tailscale.com) tailnet get a dot beside
+their hostname: green when the host is on a tailnet right now, grey when it
+belongs to one but is not connected. Hovering the dot names the tailnet, which is
+the point of the indicator — a host can belong to several tailnets but can only
+be joined to one at a time. The expanded row spells the same thing out as a
+**Tailnet** field.
+
+Nothing needs to be configured. The client detects membership on its own by
+asking `tailscale status --json`, and falls back to looking for a tailnet address
+on a Tailscale interface where that is unavailable (the CLI is not installed
+where the client looks, or the local API socket is not readable by the service
+user) — that proves the host is connected but cannot name the tailnet.
+
+Hosts that have never been seen on a tailnet report nothing at all and show no
+dot, so a fleet that does not use Tailscale never sees this feature. The reverse
+is sticky: once a host has been seen on a tailnet the server remembers which one,
+so a host that drops off — or whose client stops reporting Tailscale entirely —
+shows a grey dot naming the tailnet it was last on, rather than silently losing
+its indicator.
 
 ## Alternatives
 

@@ -18,6 +18,8 @@ type Info struct {
 	MemoryTotalBytes uint64
 	UptimeSeconds    uint64
 	RebootRequired   bool
+	// Tailscale is nil for hosts with no tailnet membership to report.
+	Tailscale *TailscaleInfo
 }
 
 // Collect gathers hardware, uptime, and reboot-required information. Every
@@ -52,6 +54,7 @@ func Collect() Info {
 	}
 
 	info.RebootRequired = RebootRequired()
+	info.Tailscale = TailscaleStatus()
 
 	return info
 }

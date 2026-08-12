@@ -60,6 +60,15 @@ func fullySetSystem() models.System {
 		MemoryTotalBytes:    14322552832,
 		UptimeSeconds:       132141,
 		RebootRequired:      true,
+		Tailscale: &models.Tailscale{
+			Connected:       true,
+			Tailnet:         "mastahnke@gmail.com",
+			MagicDNSSuffix:  "tail2ad946.ts.net",
+			IP:              "100.126.136.109",
+			State:           "Running",
+			LastTailnet:     "mastahnke@gmail.com",
+			LastConnectedAt: "2026-07-31T23:40:41Z",
+		},
 	}
 }
 
