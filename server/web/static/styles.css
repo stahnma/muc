@@ -647,6 +647,13 @@ th.sortable.descending::after {
     margin-right: 6px;
 }
 
+/* The dd above sets word-break: break-word for long values like CPU model
+   names, which would otherwise break an address mid-octet. Keep the tailnet
+   address whole and on the same line as the tailnet it belongs to. */
+.system-info .tailnet-address {
+    white-space: nowrap;
+}
+
 .tailnet-indicator.connected {
     background: var(--accent-green);
     opacity: 1;

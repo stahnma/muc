@@ -291,13 +291,21 @@ be joined to one at a time. The expanded row spells the same thing out as a
 aligned whether or not a given host has one.
 
 Nothing needs to be configured. The client asks tailscaled directly over its
-local API socket (`/run/tailscale/tailscaled.sock`), which is readable by the
-unprivileged `muc` user and needs no CLI on the host — the `tailscale` binary is
-often somewhere a hardened service cannot reach, such as a nix, flox or Homebrew
-tree, or behind the unit's `ProtectHome=true`. Where the socket is not where the
-client looks, notably on macOS, it falls back to `tailscale status --json`, and
-failing that to looking for a tailnet address on a Tailscale interface — which
-proves the host is connected but cannot name the tailnet.
+local API socket (`/run/tailscale/tailscaled.sock`), which needs no CLI on the
+host at all. Where the socket is not where the client looks, notably on macOS,
+it falls back to `tailscale status --json`, and failing that to looking for a
+tailnet address on a Tailscale interface — which proves the host is connected
+but cannot name the tailnet.
+
+Finding the CLI is its own hunt, because there is no one place it lives: `PATH`
+first, then the usual install locations (`/usr/bin`, `/usr/local/bin`,
+`/opt/homebrew/bin`, the macOS app bundle, and so on), and as a last resort
+whatever `systemctl cat tailscaled.service` — or `tailscale.service` — says
+tailscaled was started from. That covers both a unit that names the daemon
+directly, where the CLI is its neighbour, and one that runs it through an
+environment wrapper such as `flox activate -d <dir> -- tailscaled`, where the
+directory being activated leads to the same bin directory. If none of that finds
+it, the client gives up on the CLI and uses the sources above.
 
 Hosts that have never been seen on a tailnet report nothing at all and show no
 dot, so a fleet that does not use Tailscale never sees this feature. The reverse

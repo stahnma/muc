@@ -3,6 +3,7 @@ package hostinfo
 import (
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -159,6 +160,79 @@ func TestParseTailscaleStatusLoggedOutWithNodeKey(t *testing.T) {
 	}
 	if info.State != "NeedsLogin" {
 		t.Errorf("State = %q, want %q", info.State, "NeedsLogin")
+	}
+}
+
+// writeExecutable creates a stand-in binary at path so the discovery code has
+// something to find.
+func writeExecutable(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTailscaleBinaryFromUnitSibling covers a distribution-style unit, where
+// ExecStart names the daemon and the CLI is its neighbour.
+func TestTailscaleBinaryFromUnitSibling(t *testing.T) {
+	dir := t.TempDir()
+	writeExecutable(t, filepath.Join(dir, "tailscale"))
+
+	unit := "[Service]\nExecStart=" + filepath.Join(dir, "tailscaled") +
+		" --state=/var/lib/tailscale/tailscaled.state --port=41641\n"
+
+	if got := tailscaleBinaryFromUnit(unit); got != filepath.Join(dir, "tailscale") {
+		t.Errorf("tailscaleBinaryFromUnit = %q, want %q", got, filepath.Join(dir, "tailscale"))
+	}
+}
+
+// TestTailscaleBinaryFromUnitExecPrefix checks systemd's executable prefixes
+// ("-" to ignore failures, "@", "+", "!") do not hide the path behind them.
+func TestTailscaleBinaryFromUnitExecPrefix(t *testing.T) {
+	dir := t.TempDir()
+	writeExecutable(t, filepath.Join(dir, "tailscale"))
+
+	unit := "[Service]\nExecStart=-" + filepath.Join(dir, "tailscaled") + " --state=x\n"
+
+	if got := tailscaleBinaryFromUnit(unit); got != filepath.Join(dir, "tailscale") {
+		t.Errorf("tailscaleBinaryFromUnit = %q, want %q", got, filepath.Join(dir, "tailscale"))
+	}
+}
+
+// TestTailscaleBinaryFromUnitFlox covers a unit that runs tailscaled through an
+// environment wrapper. No path to the daemon appears on the command line at
+// all — only the directory being activated, which leads to the bin directory.
+func TestTailscaleBinaryFromUnitFlox(t *testing.T) {
+	home := t.TempDir()
+	want := filepath.Join(home, ".flox", "run", "x86_64-linux.tailscale-root-dev", "bin", "tailscale")
+	writeExecutable(t, want)
+
+	unit := "[Unit]\nDescription=Tailscale VPN Service (via Flox)\n[Service]\n" +
+		"ExecStart=/usr/bin/flox activate -d " + home + " -- tailscaled --state=" + home + "/tailscaled.state\n"
+
+	if got := tailscaleBinaryFromUnit(unit); got != want {
+		t.Errorf("tailscaleBinaryFromUnit = %q, want %q", got, want)
+	}
+}
+
+// TestTailscaleBinaryFromUnitGivesUp checks the search fails quietly rather
+// than returning a path that is not there — detection then falls through to
+// the interface check instead of shelling out to nothing.
+func TestTailscaleBinaryFromUnitGivesUp(t *testing.T) {
+	cases := map[string]string{
+		"no ExecStart":     "[Unit]\nDescription=Tailscale\n",
+		"nothing on disk":  "[Service]\nExecStart=/nowhere/at/all/tailscaled --state=x\n",
+		"unrelated binary": "[Service]\nExecStart=/usr/bin/env FOO=1\n",
+		"flox dir missing": "[Service]\nExecStart=/usr/bin/flox activate -d /nowhere -- tailscaled\n",
+		"empty":            "",
+	}
+	for name, unit := range cases {
+		if got := tailscaleBinaryFromUnit(unit); got != "" {
+			t.Errorf("%s: tailscaleBinaryFromUnit = %q, want \"\"", name, got)
+		}
 	}
 }
 

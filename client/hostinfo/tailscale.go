@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -54,14 +56,22 @@ var tailscaleSockets = []string{
 }
 
 // tailscaleBinaries are the install locations to try when the CLI is not on
-// PATH. The client runs as an unprivileged service user whose PATH is minimal,
-// and on macOS the CLI lives inside the app bundle rather than in a bin dir.
+// PATH. A service unit's PATH is minimal, and on macOS the CLI lives inside the
+// app bundle rather than in a bin dir.
 var tailscaleBinaries = []string{
 	"/usr/bin/tailscale",
 	"/usr/local/bin/tailscale",
+	"/usr/sbin/tailscale",
+	"/bin/tailscale",
 	"/opt/homebrew/bin/tailscale",
+	"/snap/bin/tailscale",
 	"/Applications/Tailscale.app/Contents/MacOS/Tailscale",
 }
+
+// tailscaleUnits are the systemd units that run tailscaled, in the order to
+// consult them. Distribution packages use tailscaled.service; hand-rolled units
+// tend to be named after the product.
+var tailscaleUnits = []string{"tailscaled.service", "tailscale.service"}
 
 // tailscaleInterfacePrefixes are the network interface names Tailscale creates:
 // tailscale0 on Linux, utunN on macOS, ts* on some BSDs.
@@ -82,7 +92,8 @@ var cgnatRange = &net.IPNet{IP: net.IPv4(100, 64, 0, 0).To4(), Mask: net.CIDRMas
 //     (a nix, flox, or Homebrew install, say), and it is exactly those hosts
 //     that would otherwise go unnamed.
 //  2. `tailscale status --json`, for hosts where the socket is not where we
-//     look for it — notably macOS.
+//     look for it — notably macOS. See findTailscaleBinary for how the CLI is
+//     located, which is its own small hunt.
 //  3. A tailnet address on a Tailscale interface. This proves the host is
 //     connected but cannot say to which tailnet, so it is a last resort:
 //     better a dot with no name than no dot at all.
@@ -154,16 +165,126 @@ func queryTailscaleLocalAPI(socket string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 }
 
+// findTailscaleBinary locates the tailscale CLI: PATH first, then the usual
+// install locations, then — as a last resort — wherever the systemd unit that
+// runs tailscaled says it lives. There is no single right answer to find: the
+// CLI ships in /usr/bin from a distribution package, in /opt/homebrew on macOS,
+// and out of a nix or flox tree on hosts that install it that way.
 func findTailscaleBinary() string {
 	if path, err := exec.LookPath("tailscale"); err == nil {
 		return path
 	}
 	for _, path := range tailscaleBinaries {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		if isExecutableFile(path) {
+			return path
+		}
+	}
+	return tailscaleBinaryFromSystemd()
+}
+
+// tailscaleBinaryFromSystemd asks systemd where tailscaled was started from and
+// looks for the CLI alongside it.
+func tailscaleBinaryFromSystemd() string {
+	if runtime.GOOS != "linux" {
+		return ""
+	}
+	for _, unit := range tailscaleUnits {
+		ctx, cancel := context.WithTimeout(context.Background(), tailscaleStatusTimeout)
+		out, err := exec.CommandContext(ctx, "systemctl", "cat", unit).Output()
+		cancel()
+		if err != nil {
+			slog.Debug("Failed to read systemd unit for Tailscale", "unit", unit, "error", err)
+			continue
+		}
+		if path := tailscaleBinaryFromUnit(string(out)); path != "" {
+			slog.Debug("Located tailscale CLI from systemd unit", "unit", unit, "path", path)
 			return path
 		}
 	}
 	return ""
+}
+
+// tailscaleBinaryFromUnit finds the CLI from the text of a systemd unit,
+// covering the two shapes an ExecStart takes in practice:
+//
+//	ExecStart=/usr/sbin/tailscaled --state=...
+//	ExecStart=/usr/bin/flox activate -d /root/tailscale-home -- tailscaled ...
+//
+// The first names the daemon binary, and the CLI is its neighbour. The second
+// runs the daemon through an environment wrapper, so no path to it appears on
+// the command line at all — but the directory being activated leads to the
+// same bin directory.
+func tailscaleBinaryFromUnit(unit string) string {
+	for _, line := range strings.Split(unit, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ExecStart") {
+			continue
+		}
+		_, command, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+
+		fields := strings.Fields(command)
+		for _, field := range fields {
+			// systemd allows prefix characters such as "-@+!" on the executable.
+			field = strings.TrimLeft(field, "-@+!:")
+			if !strings.HasPrefix(field, "/") {
+				continue
+			}
+			if base := filepath.Base(field); base != "tailscaled" && base != "tailscale" {
+				continue
+			}
+			if path := siblingTailscale(field); path != "" {
+				return path
+			}
+		}
+
+		if path := floxTailscale(fields); path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+// siblingTailscale returns the tailscale CLI sitting next to the given binary.
+func siblingTailscale(binary string) string {
+	candidate := filepath.Join(filepath.Dir(binary), "tailscale")
+	if isExecutableFile(candidate) {
+		return candidate
+	}
+	return ""
+}
+
+// floxTailscale handles `flox activate -d <dir> -- tailscaled`, where the
+// binaries live in the activated environment's run directory rather than
+// anywhere named on the command line. The run directory carries the system
+// name (".flox/run/x86_64-linux.tailscale-root-dev/bin"), so it is matched by
+// glob rather than spelled out.
+func floxTailscale(fields []string) string {
+	for i, field := range fields {
+		if field != "-d" && field != "--dir" {
+			continue
+		}
+		if i+1 >= len(fields) || !strings.HasPrefix(fields[i+1], "/") {
+			continue
+		}
+		matches, err := filepath.Glob(filepath.Join(fields[i+1], ".flox", "run", "*", "bin", "tailscale"))
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			if isExecutableFile(match) {
+				return match
+			}
+		}
+	}
+	return ""
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func runTailscaleStatus(bin string) ([]byte, error) {

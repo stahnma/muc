@@ -441,23 +441,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Spell out in the expanded details what the dot only hints at, leading
     // with the tailnet name — that is the part a dot cannot convey.
+    //
+    // The line stays short enough not to wrap in the details grid: the MagicDNS
+    // suffix lives in the dot's tooltip rather than here, and the address is
+    // held on one line with the name, since a wrapped address reads as a
+    // separate fact rather than a detail of the same one.
     function tailnetDetail(system) {
         const ts = system && system.tailscale;
         if (!ts) return '';
         const name = tailnetName(ts);
-        const parts = [];
+        let html = `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}"></span>`;
         if (ts.connected) {
-            parts.push(name || 'connected (tailnet name unavailable)');
-            if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) parts.push(`(${ts.magic_dns_suffix})`);
-            if (ts.ip) parts.push(`· ${ts.ip}`);
+            html += escapeHtml(name || 'connected (tailnet name unavailable)');
+            if (ts.ip) html += ` <span class="tailnet-address">· ${escapeHtml(ts.ip)}</span>`;
         } else {
-            parts.push(name ? `${name} — not connected` : 'not connected');
+            html += escapeHtml(name ? `${name} — not connected` : 'not connected');
             const reason = tailnetStateReason(ts.state);
-            if (reason) parts.push(`· ${reason}`);
-            if (ts.last_connected_at) parts.push(`· last connected ${formatRelativeTime(ts.last_connected_at)}`);
+            if (reason) html += escapeHtml(` · ${reason}`);
+            if (ts.last_connected_at) html += escapeHtml(` · last connected ${formatRelativeTime(ts.last_connected_at)}`);
         }
-        return `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}"></span>` +
-            ` ${escapeHtml(parts.join(' '))}`;
+        return html;
     }
 
     // Get OS icon based on OS name
