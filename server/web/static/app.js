@@ -848,12 +848,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
                     ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
                     ['Tailnet', tailnetDetail(data)],
-                    // When the package manager was actually queried, as opposed
-                    // to Last Seen in the table, which is when the server last
-                    // heard from the host.
-                    ['Update data collected', data.updates_checked_at
-                        ? `<span data-tooltip="${escapeHtml(formatFullTimestamp(data.updates_checked_at))}">${escapeHtml(formatRelativeTime(data.updates_checked_at))}</span>`
-                        : ''],
+                    // updates_checked_at deliberately has no row here. Two
+                    // timestamps for "when did we last hear about this host"
+                    // only invite the reader to notice they disagree; Last Seen
+                    // in the table is the single place that answers it. The
+                    // check time still drives the ⚠ next to the update badge
+                    // when the data behind it has gone stale.
                 ].filter(([, value]) => value !== '');
 
                 // Surface an incomplete check explicitly: the pending list below

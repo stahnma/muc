@@ -264,11 +264,13 @@ One more consequence is worth knowing:
   the client reports it rather than hiding it: the host shows "Status unknown" (or
   a ⚠ next to its update badge) with the skipped repo named in the expanded row.
 
-The dashboard reports two distinct timestamps. **Last Seen** is stamped by the
-server when it receives a check-in, so it only means the host is reachable.
-**Update data collected** (`updates_checked_at`, in the expanded row) is when the
-client actually queried its package manager. When the two diverge the host is
-flagged, so a badge backed by hours-old data is not mistaken for a fresh one.
+**Last Seen** is the dashboard's one timestamp: the server stamps it when it
+receives a check-in, so it means the host is reachable. The client also reports
+when it actually queried its package manager (`updates_checked_at`, available
+over the API), but the dashboard does not show it as a second time — two
+timestamps in two places mostly serve to disagree with each other. Instead, when
+the two diverge the host's update badge is flagged with a ⚠, so a badge backed
+by hours-old data is not mistaken for a fresh one.
 
 ## Usage
 
