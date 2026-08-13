@@ -475,20 +475,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // Hover text for the tailnet dot. A host can belong to several tailnets but
     // join only one at a time, so naming the tailnet is the whole point of the
     // indicator — the dot alone only says connected or not.
+    //
+    // The name is all the tooltip says: the address, the MagicDNS suffix and
+    // why a host is disconnected are all in the expanded details, and a tooltip
+    // that recites them makes the one fact worth glancing at harder to read.
+    // A grey dot still gets "not connected" so the name cannot be misread as
+    // where the host is right now.
     function tailnetTooltip(ts) {
         const name = tailnetName(ts);
-        const parts = [];
-        if (ts.connected) {
-            parts.push(name ? `On tailnet ${name}` : 'On a tailnet (name unavailable)');
-            if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) parts.push(ts.magic_dns_suffix);
-            if (ts.ip) parts.push(ts.ip);
-        } else {
-            parts.push(name ? `Not on a tailnet — last seen on ${name}` : 'Not on a tailnet');
-            if (ts.last_connected_at) parts.push(`last connected ${formatRelativeTime(ts.last_connected_at)}`);
-            const reason = tailnetStateReason(ts.state);
-            if (reason) parts.push(reason);
-        }
-        return parts.join(' · ');
+        if (ts.connected) return name ? `tailnet: ${name}` : 'on a tailnet (name unavailable)';
+        return name ? `tailnet: ${name} — not connected` : 'not on a tailnet';
     }
 
     // Render the tailnet dot that leads a hostname cell.
@@ -515,20 +511,25 @@ document.addEventListener("DOMContentLoaded", () => {
     // Spell out in the expanded details what the dot only hints at, leading
     // with the tailnet name — that is the part a dot cannot convey.
     //
-    // The line stays short enough not to wrap in the details grid: the MagicDNS
-    // suffix lives in the dot's tooltip rather than here, and the address is
-    // held on one line with the name, since a wrapped address reads as a
-    // separate fact rather than a detail of the same one.
+    // This is where the whole of what the host reported lands, since the dot's
+    // tooltip now says only which tailnet it is: the MagicDNS suffix and the
+    // address hang off the name, each held on one line, since a wrapped domain
+    // or address reads as a separate fact rather than a detail of the same one.
+    // The suffix is skipped when it is standing in as the name, so the same
+    // string is not printed twice.
     function tailnetDetail(system) {
         const ts = system && system.tailscale;
         if (!ts) return '';
         const name = tailnetName(ts);
+        const detail = value => ` <span class="tailnet-address">· ${escapeHtml(value)}</span>`;
         let html = `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}"></span>`;
         if (ts.connected) {
             html += escapeHtml(name || 'connected (tailnet name unavailable)');
-            if (ts.ip) html += ` <span class="tailnet-address">· ${escapeHtml(ts.ip)}</span>`;
+            if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) html += detail(ts.magic_dns_suffix);
+            if (ts.ip) html += detail(ts.ip);
         } else {
             html += escapeHtml(name ? `${name} — not connected` : 'not connected');
+            if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) html += detail(ts.magic_dns_suffix);
             const reason = tailnetStateReason(ts.state);
             if (reason) html += escapeHtml(` · ${reason}`);
             if (ts.last_connected_at) html += escapeHtml(` · last connected ${formatRelativeTime(ts.last_connected_at)}`);

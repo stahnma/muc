@@ -678,19 +678,18 @@ th.sortable.descending::after {
 
 /* Fixed-width gutter the tailnet dot sits in, ahead of the hostname. Holding
    the width whether or not the host has a dot keeps hostnames aligned down the
-   column, and it gives the 8px dot a hover target big enough to land on. */
+   column, and it gives the 8px dot a hover target big enough to land on.
+
+   The slot deliberately does not set cursor: help. The dot is part of the
+   hostname cell rather than an annotation stuck onto it, and a question-mark
+   pointer appearing as the mouse crosses the gutter on the way to the hostname
+   is more distracting than the tooltip is worth. */
 .tailnet-slot {
     display: inline-block;
     width: 16px;
     height: 1.5em;
     line-height: 1.5em;
     vertical-align: middle;
-    cursor: help;
-}
-
-/* An empty slot is spacing, not something to hover. */
-.tailnet-slot:empty {
-    cursor: default;
 }
 
 /* Tailnet membership dot. Green when the host is on a tailnet right now, grey
