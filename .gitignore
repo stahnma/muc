@@ -6,3 +6,4 @@ ups
 systems.db
 /dist/
 .env
+localtest
