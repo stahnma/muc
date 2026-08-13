@@ -71,13 +71,20 @@ func TestClientSystemdUnit(t *testing.T) {
 	}
 }
 
-// TestClientPostinstallRetiresDropIn covers the upgrade path off the old "run as
-// muc, override to root per package manager" arrangement.
+// TestClientPostinstallRetiresDropInAndRepairsState covers the upgrade path off
+// the old "run as muc, override to root per package manager" arrangement.
 //
-// The unit sets User=root itself now, so a stale 10-root.conf would keep
-// applying settings this package no longer manages — including the
-// StateDirectory=muc that takes /var/lib/muc away from muc-server.
-func TestClientPostinstallRetiresDropIn(t *testing.T) {
+// Two things must be undone on hosts that ran that version, and neither is
+// self-healing:
+//
+//   - the 10-root.conf drop-in. The unit sets User=root itself now, so a stale
+//     override would keep applying settings this package no longer manages —
+//     including the StateDirectory=muc that causes the second problem.
+//   - ownership of /var/lib/muc. systemd re-chowns a StateDirectory to the
+//     unit's user on every start, recursively, so every host that ran this
+//     client as root has a root-owned /var/lib/muc. Where muc-server is
+//     installed alongside, that is its database directory and it runs as muc.
+func TestClientPostinstallRetiresDropInAndRepairsState(t *testing.T) {
 	content := readFileOrFail(t, "client/dist/postinstall.sh")
 
 	assertContains(t, content, "rm -f \"$DROPIN_DIR/10-root.conf\"",
@@ -85,6 +92,26 @@ func TestClientPostinstallRetiresDropIn(t *testing.T) {
 	// Older packages shipped it under a zypper-specific name.
 	assertContains(t, content, "10-zypper-root.conf",
 		"must clean up the legacy drop-in name from older packages")
+	assertContains(t, content, "chown -R muc:muc /var/lib/muc",
+		"must return /var/lib/muc to muc-server, which a previous root client chowned away")
+	assertContains(t, content, "rm -rf /var/lib/muc/dnf",
+		"must reclaim the metadata cache the unprivileged client left behind")
+
+	// Retiring the leftover directory on client-only hosts must never be able to
+	// take the server's database with it. rmdir refuses a non-empty directory;
+	// rm -r would not, and systems.db lives there on a combined host.
+	assertContains(t, content, "rmdir /var/lib/muc",
+		"must retire the empty leftover directory on client-only hosts")
+	if strings.Contains(content, "rm -rf /var/lib/muc\n") || strings.Contains(content, "rm -rf /var/lib/muc ") {
+		t.Error("must not rm -r /var/lib/muc: on a combined host that is muc-server's database directory")
+	}
+	assertContains(t, content, "/usr/lib/systemd/system/muc-server.service",
+		"removal must be guarded on muc-server not being installed")
+	// System users are not this package's to remove: muc-server creates the same
+	// user, and UID reuse silently reassigns any file still owned by it.
+	if strings.Contains(content, "userdel") || strings.Contains(content, "groupdel") {
+		t.Error("client postinstall must not remove the muc user: muc-server may need it, and UID reuse reassigns orphaned files")
+	}
 
 	// The client must not write a drop-in any more: doing so would reintroduce
 	// the StateDirectory that takes /var/lib/muc from muc-server. Match the

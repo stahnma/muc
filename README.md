@@ -237,7 +237,8 @@ packaged for needs root to answer usefully:
 it: `StateDirectory=` makes systemd re-chown the directory to the unit's user on
 every start, recursively, so a root client sharing it would take the directory
 away from the server — which then keeps working until its next restart, because
-permission is checked at `open()` rather than per write.
+permission is checked at `open()` rather than per write. Upgrading the client
+package repairs the ownership on hosts where an older version already did this.
 
 One more consequence is worth knowing:
 

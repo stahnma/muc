@@ -35,6 +35,49 @@ rm -f "$DROPIN_DIR/10-root.conf" 2>/dev/null || true
 rm -f "$DROPIN_DIR/10-zypper-root.conf" 2>/dev/null || true
 rmdir "$DROPIN_DIR" 2>/dev/null || true
 
+# Clean up state the client no longer keeps.
+#
+# It never writes anything now — the only write it ever had was an unprivileged
+# dnf metadata cache, and root uses /var/cache/dnf. Two things are left over on
+# upgraded hosts:
+#
+#   - /var/lib/muc/dnf, that cache. Nothing reads it, and a full set of repo
+#     metadata is not small (64 MB on the host this was developed against).
+#   - ownership of /var/lib/muc itself. Earlier versions set StateDirectory=muc,
+#     and systemd re-chowns a StateDirectory to the unit's user on every start,
+#     recursively — so every host that ran this client as root ended up with a
+#     root-owned /var/lib/muc. Where muc-server is installed alongside, that is
+#     its database directory and it runs as muc, so it loses write access the
+#     next time it restarts. The failure is invisible until then: the server
+#     keeps a writable fd opened before the chown, and permissions are checked at
+#     open(), not per write.
+#
+# muc-server owns /var/lib/muc now; the client package neither creates nor uses
+# it. Repair rather than remove, since the server's systems.db may be in there.
+if [ -d /var/lib/muc ]; then
+    rm -rf /var/lib/muc/dnf 2>/dev/null || true
+    if getent passwd muc >/dev/null 2>&1; then
+        chown -R muc:muc /var/lib/muc 2>/dev/null || true
+    fi
+
+    # On a client-only host the directory is now an empty leftover from older
+    # client packages, so retire it. Two independent guards, because getting this
+    # wrong deletes the server's database:
+    #
+    #   - skip entirely if muc-server is installed, whatever the directory holds;
+    #   - rmdir, never rm -r. rmdir refuses a non-empty directory, so even if the
+    #     first guard is somehow wrong, systems.db cannot be destroyed.
+    #
+    # The muc user is deliberately NOT removed. This package does not own it —
+    # muc-server's preinstall creates it too, and a client upgrade has no reliable
+    # way to know the server is not about to need it. Removing system users on
+    # upgrade also invites UID reuse, which silently hands any file still owned by
+    # that UID to whatever service claims it next.
+    if [ ! -f /usr/lib/systemd/system/muc-server.service ]; then
+        rmdir /var/lib/muc 2>/dev/null || true
+    fi
+fi
+
 systemctl daemon-reload
 systemctl try-restart muc-client
 
