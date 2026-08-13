@@ -737,13 +737,19 @@ th.sortable.descending::after {
 }
 
 /* Two-column key/value grid: labels in a muted column, values in a bold
-   primary column that left-justifies (including when a long value wraps). */
+   primary column that left-justifies (including when a long value wraps).
+
+   The grid takes the full width of the expanded row. It used to stop at
+   560px, which left the value column barely 380px wide and wrapped anything
+   longer — a tailnet with its MagicDNS suffix and address, or most CPU model
+   names — while the rest of the row sat empty. Values start at the same x
+   either way, since the label column is sized to its own content, so the
+   wider grid costs nothing in how far the eye travels from label to value. */
 .system-info dl {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0 32px;
     margin: 0;
-    max-width: 560px;
 }
 
 .system-info dt {
