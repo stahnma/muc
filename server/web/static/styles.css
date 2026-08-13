@@ -465,11 +465,13 @@ th.sortable.descending::after {
     color: var(--text-muted);
 }
 
+/* Marks a host the server has not heard from lately. Like every other
+   indicator in the table, it leaves the cursor alone — see .reboot-indicator
+   for why. */
 .stale-indicator {
     color: var(--accent-orange);
     margin-right: 6px;
     font-size: 14px;
-    cursor: help;
 }
 
 /* Marks an update badge whose underlying data is incomplete or old, so a
@@ -478,7 +480,6 @@ th.sortable.descending::after {
     color: var(--accent-orange);
     margin-left: 4px;
     font-size: 14px;
-    cursor: help;
 }
 
 .update-check-warnings {
@@ -605,11 +606,13 @@ th.sortable.descending::after {
     }
 }
 
-/* Reboot-required indicator shown next to a hostname. */
+/* Reboot-required indicator shown next to a hostname. Like the tailnet dot,
+   it leaves the cursor alone: it reads as part of the hostname cell, and a
+   question-mark pointer flickering as the mouse crosses it is more
+   distracting than the hover explanation is worth. */
 .reboot-indicator {
     color: var(--accent-orange);
     font-weight: 700;
-    cursor: help;
 }
 
 /* Hover explanations, drawn here rather than left to the title attribute.
