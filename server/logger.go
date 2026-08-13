@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 )
@@ -12,9 +13,18 @@ func setupLogger() bool {
 	var devMode bool
 	var jsonOutput bool
 
+	var showVersion bool
+
 	flag.BoolVar(&devMode, "dev", false, "Enable dev mode (debug logging enabled)")
 	flag.BoolVar(&jsonOutput, "json", false, "Output logs in JSON format")
+	flag.BoolVar(&showVersion, "version", false, "Print the server version and exit")
+	flag.BoolVar(&showVersion, "v", false, "Print the server version and exit")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println("muc-server " + Version)
+		os.Exit(0)
+	}
 
 	// Set log level
 	level := slog.LevelInfo
