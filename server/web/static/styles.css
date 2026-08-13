@@ -469,6 +469,7 @@ th.sortable.descending::after {
     color: var(--accent-orange);
     margin-right: 6px;
     font-size: 14px;
+    cursor: help;
 }
 
 /* Marks an update badge whose underlying data is incomplete or old, so a
@@ -609,6 +610,70 @@ th.sortable.descending::after {
     color: var(--accent-orange);
     font-weight: 700;
     cursor: help;
+}
+
+/* Hover explanations, drawn here rather than left to the title attribute.
+   Every check-in from any host re-renders the whole table, and a browser
+   abandons a pending native tooltip when the element under the pointer is
+   replaced — it will not start the timer again until the mouse moves, so these
+   explanations mostly never appeared. A :hover rule is re-evaluated against the
+   replacement immediately, so they survive a re-render.
+
+   The panel opens upward. The table clips its overflow to keep its rounded
+   corners, so a panel that opened downward would be cut off by the bottom edge
+   on the last row; opening up puts the only tight spot on the first row, where
+   there is a whole sticky header's worth of room to grow into. That is also why
+   these stay one line: two would start to reach past the top of the table on
+   the first row. The z-index clears the sticky header, which the first row's
+   panel does overlap. */
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    z-index: 20;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    box-shadow: var(--shadow-md);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.1s ease;
+}
+
+[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* A cell can carry its own explanation and hold a marker carrying another — the
+   stale check-in warning sits inside the Last Seen cell. Hovering the marker
+   hovers the cell as well, so without this the two panels would draw on top of
+   each other. Let the innermost one win, the way a title attribute would. */
+[data-tooltip]:has([data-tooltip]:hover)::after {
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* Hang the panel from the right edge instead, for the columns far enough across
+   the table that a left-anchored one would run out past the right edge and be
+   clipped. Anchored this way it grows back across the table, where the room is. */
+[data-tooltip-align="right"]::after {
+    left: auto;
+    right: 0;
 }
 
 /* Fixed-width gutter the tailnet dot sits in, ahead of the hostname. Holding

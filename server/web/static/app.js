@@ -17,12 +17,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const INITIAL_RECONNECT_DELAY = 1000; // 1 second
     let expandedSystems = new Set(); // Track manually expanded systems
 
-    // Helper function to escape HTML
+    // Escape text for either element content or a double-quoted attribute value.
+    // textContent/innerHTML alone does not touch quotes, which is fine in
+    // content but lets a value carrying one break out of an attribute — and a
+    // package-manager warning quoting a repository name reaches attributes.
     function escapeHtml(text) {
         if (text == null) return '';
         const div = document.createElement('div');
         div.textContent = text;
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Match a row by hostname. A hostname is data, not a fragment of selector
+    // syntax: one carrying a quote or a bracket makes querySelector throw a
+    // SyntaxError, which would take expand/collapse down with it. CSS.escape
+    // renders arbitrary text as a valid unquoted attribute value.
+    function hostnameAttr(hostname) {
+        return `[data-hostname=${CSS.escape(hostname == null ? '' : String(hostname))}]`;
     }
 
     // Initialize WebSocket connection with exponential backoff
@@ -135,11 +146,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 // Rebuild cell content with updated timestamp and stale indicator
                 const relativeTime = formatRelativeTime(timestamp);
                 if (isStale) {
-                    cell.innerHTML = '<span class="stale-indicator" title="Host has not checked in for 4+ hours">⚠️ </span>' + relativeTime;
+                    cell.innerHTML = tooltipIcon('⚠️ ', 'stale-indicator', STALE_CHECKIN_TOOLTIP, 'right') + relativeTime;
                 } else {
                     cell.textContent = relativeTime;
                 }
-                cell.title = formatFullTimestamp(timestamp);
+                cell.dataset.tooltip = formatFullTimestamp(timestamp);
             }
         });
     }
@@ -346,6 +357,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // Hours after which data is considered stale, for both check-in and update data.
     const STALE_THRESHOLD_HOURS = 4;
 
+    // Written out once because the stale marker is rendered from two places: the
+    // row template, and the timer that refreshes relative timestamps in place.
+    const STALE_CHECKIN_TOOLTIP = `Host has not checked in for ${STALE_THRESHOLD_HOURS}+ hours`;
+
     // Check if a system hasn't checked in for 4+ hours
     function isStaleCheckIn(isoTimestamp) {
         if (!isoTimestamp) return true; // Consider missing timestamp as stale
@@ -381,6 +396,60 @@ document.addEventListener("DOMContentLoaded", () => {
             return '';
         }
         return system.update_check_warnings.join('; ');
+    }
+
+    // Roughly how many characters of tooltip fit across the table on one line.
+    // Tooltips are drawn on a single line so that one hovered in the first row
+    // does not reach past the top of the table and get clipped, which puts a
+    // budget on their width instead. See the [data-tooltip] rules.
+    const TOOLTIP_MAX_LENGTH = 110;
+
+    // Keep a tooltip inside that budget. Nothing is lost by cutting one short:
+    // the full text is in the host's expanded details either way.
+    function truncateTooltip(text) {
+        if (!text || text.length <= TOOLTIP_MAX_LENGTH) return text || '';
+        return text.slice(0, TOOLTIP_MAX_LENGTH - 1).trimEnd() + '…';
+    }
+
+    // Name as many pending updates as fit on the line and count the rest. A
+    // host with two hundred of them is common, and naming them all produced a
+    // tooltip several screens wide that said less than this one does.
+    function pendingUpdatesTooltip(pending) {
+        const names = Array.isArray(pending)
+            ? pending.map(update => (update && update.name) || '').filter(Boolean)
+            : [];
+        if (names.length === 0) return 'Updates available - click for details';
+
+        const prefix = 'Updates available: ';
+        const shown = [];
+        let length = prefix.length;
+        for (const name of names) {
+            // Always name at least one, however long it is; truncateTooltip
+            // catches a pathologically long package name.
+            if (shown.length && length + name.length + 2 > TOOLTIP_MAX_LENGTH) break;
+            shown.push(name);
+            length += name.length + 2;
+        }
+        const remaining = names.length - shown.length;
+        return truncateTooltip(prefix + shown.join(', ')) +
+            (remaining > 0 ? `, and ${remaining} more` : '');
+    }
+
+    // Markup for an icon that says nothing on its own: the tooltip is the whole
+    // message, so it doubles as the icon's accessible name. aria-label gets the
+    // full text — only the drawn panel has a width to stay inside.
+    //
+    // align is "right" for the columns far enough across the table that a
+    // left-anchored panel would be clipped by its right edge.
+    function tooltipIcon(icon, className, tooltip, align) {
+        return `<span class="${className}" role="img" aria-label="${escapeHtml(tooltip)}"` +
+            ` data-tooltip="${escapeHtml(truncateTooltip(tooltip))}"` +
+            `${align ? ` data-tooltip-align="${align}"` : ''}>${icon}</span>`;
+    }
+
+    // Marks an update badge whose data is incomplete or old, and says why.
+    function dataWarningIndicator(reason) {
+        return tooltipIcon(' ⚠', 'data-warning-indicator', reason, 'right');
     }
 
     // Explain a disconnected tailnet dot in the host's own terms.
@@ -429,12 +498,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // when some host in the table reports a tailnet — a fleet that does not use
     // Tailscale gets neither dots nor the space they would occupy. The slot,
     // not the 8px dot, carries the tooltip: it is a much easier hover target.
+    //
+    // The tooltip rides on data-tooltip and is drawn by CSS rather than by a
+    // title attribute, for the reason the [data-tooltip] rules give; aria-label
+    // carries the full text for anyone not using a pointer.
     function tailnetIndicator(system, reserveSlot) {
         if (!reserveSlot) return '';
         const ts = system && system.tailscale;
         if (!ts) return '<span class="tailnet-slot"></span>';
         const tooltip = tailnetTooltip(ts);
-        return `<span class="tailnet-slot" role="img" title="${escapeHtml(tooltip)}"` +
+        return `<span class="tailnet-slot" role="img" data-tooltip="${escapeHtml(truncateTooltip(tooltip))}"` +
             ` aria-label="${escapeHtml(tooltip)}">` +
             `<span class="tailnet-indicator${ts.connected ? ' connected' : ''}"></span></span>`;
     }
@@ -601,32 +674,34 @@ document.addEventListener("DOMContentLoaded", () => {
                         // when the check was incomplete (a repo was skipped) or
                         // when the host is reachable but its update data is old.
                         const badgeNote = warning
-                            ? `<span class="data-warning-indicator" title="${escapeHtml(warning)}"> ⚠</span>`
+                            ? dataWarningIndicator(warning)
                             : staleData
-                            ? `<span class="data-warning-indicator" title="Host is checking in, but its update data was collected ${escapeHtml(formatRelativeTime(system.updates_checked_at))}"> ⚠</span>`
+                            ? dataWarningIndicator(`Host is checking in, but its update data was collected ${formatRelativeTime(system.updates_checked_at)}`)
                             : '';
                         return `
-                    <tr data-hostname="${system.hostname}"${isStale ? ' class="stale-checkin"' : ''}>
+                    <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
-                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${system.reboot_required ? ' <span class="reboot-indicator" title="Reboot required">⟳</span>' : ''}</td>
+                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${system.reboot_required ? ' ' + tooltipIcon('⟳', 'reboot-indicator', 'Reboot required') : ''}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
                         <td>${system.update_status_unknown ?
-                            `<span class="update-badge status-unknown" title="${escapeHtml(warning || 'Package manager not detected - update status unknown')}">
+                            `<span class="update-badge status-unknown" data-tooltip-align="right"
+                                   data-tooltip="${escapeHtml(truncateTooltip(warning || 'Package manager not detected - update status unknown'))}">
                                 Status unknown
                             </span>` :
                             system.updates_available ?
                             `<span class="update-badge update-available${system.pending_updates ? ' priority-' + getUpdatePriority(system.pending_updates) : ''}"
-                                   title="Updates available${system.pending_updates ? ': ' + system.pending_updates.map(u => escapeHtml(u.name)).join(', ') : ' - Click for details'}">
+                                   data-tooltip-align="right"
+                                   data-tooltip="${escapeHtml(pendingUpdatesTooltip(system.pending_updates))}">
                                 Updates${system.pending_updates ? ` (${system.pending_updates.length})` : ' (click for details)'}
                                 ${system.pending_updates && getUpdatePriority(system.pending_updates) === 'high' ? ' ⚠️' : ''}
                             </span>${badgeNote}` :
                             `<span class="update-badge up-to-date">Up to date</span>${badgeNote}`
                         }</td>
                         <td>${escapeHtml(formatUptime(system.uptime_seconds))}</td>
-                        <td class="last-seen-cell" data-timestamp="${escapeHtml(system.last_seen || '')}" title="${formatFullTimestamp(system.last_seen || '')}">
-                            ${isStale ? '<span class="stale-indicator" title="Host has not checked in for 4+ hours">⚠️ </span>' : ''}
+                        <td class="last-seen-cell" data-timestamp="${escapeHtml(system.last_seen || '')}" data-tooltip-align="right" data-tooltip="${escapeHtml(formatFullTimestamp(system.last_seen || ''))}">
+                            ${isStale ? tooltipIcon('⚠️ ', 'stale-indicator', STALE_CHECKIN_TOOLTIP, 'right') : ''}
                             ${formatRelativeTime(system.last_seen || '')}
                         </td>
                     </tr>
@@ -657,8 +732,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Restore expanded rows for systems that were manually expanded
         expandedSystems.forEach(hostname => {
-            const detailsRow = document.querySelector(`.details-row[data-hostname="${hostname}"]`);
-            const chevron = document.querySelector(`tr[data-hostname="${hostname}"] .chevron`);
+            const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
+            const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
             if (detailsRow && chevron) {
                 detailsRow.style.display = "table-row";
                 chevron.textContent = "▼";
@@ -739,7 +814,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Function to load system details
     function loadSystemDetails(hostname, detailsContent) {
-        fetch(`/api/systems/${hostname}`)
+        fetch(`/api/systems/${encodeURIComponent(hostname)}`)
             .then((response) => {
                 if (!response.ok) {
                     throw new Error(`Failed to fetch system details: ${response.status}`);
@@ -776,7 +851,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // to Last Seen in the table, which is when the server last
                     // heard from the host.
                     ['Update data collected', data.updates_checked_at
-                        ? `<span title="${escapeHtml(formatFullTimestamp(data.updates_checked_at))}">${escapeHtml(formatRelativeTime(data.updates_checked_at))}</span>`
+                        ? `<span data-tooltip="${escapeHtml(formatFullTimestamp(data.updates_checked_at))}">${escapeHtml(formatRelativeTime(data.updates_checked_at))}</span>`
                         : ''],
                 ].filter(([, value]) => value !== '');
 
@@ -874,7 +949,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const row = chevron.closest("tr");
         const hostname = row.dataset.hostname;
-        const detailsRow = document.querySelector(`.details-row[data-hostname="${hostname}"]`);
+        const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
         const detailsContent = detailsRow.querySelector(".details-content");
 
         // Toggle visibility
@@ -916,7 +991,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function expandAll() {
         document.querySelectorAll('.details-row').forEach(detailsRow => {
             const hostname = detailsRow.dataset.hostname;
-            const chevron = document.querySelector(`tr[data-hostname="${hostname}"] .chevron`);
+            const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
             if (chevron && detailsRow.style.display === "none") {
                 detailsRow.style.display = "table-row";
                 chevron.textContent = "▼";
@@ -933,7 +1008,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function collapseAll() {
         document.querySelectorAll('.details-row').forEach(detailsRow => {
             const hostname = detailsRow.dataset.hostname;
-            const chevron = document.querySelector(`tr[data-hostname="${hostname}"] .chevron`);
+            const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
             if (chevron && detailsRow.style.display !== "none") {
                 detailsRow.style.display = "none";
                 chevron.textContent = "▶";
