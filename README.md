@@ -210,27 +210,50 @@ dashboard reflects a `dnf upgrade` within seconds instead of at the next poll
 
 ### Keeping update data fresh
 
-The client runs as the unprivileged `muc` user on dnf/yum hosts (apt and zypper
-hosts get a packaging drop-in that runs it as root, because only root can refresh
-their metadata). Two consequences are worth knowing:
+The client runs as **root** and keeps no state of its own — it writes nothing to
+disk, owns no system user, and has no `StateDirectory`. Its whole job is asking
+the system package manager what is pending, and every package manager it is
+packaged for needs root to answer usefully:
 
-- **dnf's cache is pinned to `/var/lib/muc/dnf`.** An unprivileged dnf cannot
-  write `/var/cache/dnf` and would otherwise fall back to a `/var/tmp` directory
-  that the unit's `PrivateTmp=true` destroys on every restart. Note that
-  `dnf-makecache.timer` does *not* keep the client's view warm — it refreshes
-  root's cache, which is a separate tree.
+- **apt and zypper** cannot refresh their repository metadata at all without
+  root, so an unprivileged check silently under-reports.
+
+- **dnf and yum** *can* refresh unprivileged — but into a per-user cache that
+  your own `sudo dnf` never reads, and the client pins a shorter expiry (1h) than
+  stock repos use for interactive work (6h). Between those two marks the client
+  has re-synced and your shell has not, so the dashboard correctly lists an
+  update that `sudo dnf update` reports as "nothing to do". Running as root puts
+  both on `/var/cache/dnf`, and the client's hourly refresh then warms the very
+  cache your shell reads — so the two cannot drift apart, and your interactive
+  `dnf update` gets more accurate as a side effect.
+
+  If you ever see the dashboard claim updates your shell denies, compare using
+  `dnf check-update --refresh` — without `--refresh`, dnf answers from a cache it
+  still considers valid. A client running unprivileged logs a warning saying
+  exactly this.
+
+`/var/lib/muc` belongs to **muc-server** alone, which runs as the unprivileged
+`muc` user and keeps `systems.db` there. The client deliberately does not share
+it: `StateDirectory=` makes systemd re-chown the directory to the unit's user on
+every start, recursively, so a root client sharing it would take the directory
+away from the server — which then keeps working until its next restart, because
+permission is checked at `open()` rather than per write.
+
+One more consequence is worth knowing:
 
 - **Repository signing keys are accepted unattended.** A repo with
-  `repo_gpgcheck=1` verifies `repomd.xml` against a per-repo GPG keyring under the
-  cache dir, separate from the system rpm keyring. The client passes `-y` so it
-  adopts those keys without prompting — otherwise the prompt is declined and
+  `repo_gpgcheck=1` verifies `repomd.xml` against a GPG keyring under the cache
+  dir, separate from the system rpm keyring. The client passes `-y` so it adopts
+  those keys without prompting — otherwise the prompt is declined and
   `skip_if_unavailable` drops the repo along with all of its updates.
 
   The trade-off is deliberate: the client trusts whatever key the repo's
   configured `gpgkey=` URL serves. `check-update` installs nothing, so this only
-  affects which keys the muc cache trusts for *metadata* verification; package
-  installation still verifies against the root-owned rpm keyring. Every import is
-  logged, so you can audit what a host has trusted:
+  affects which keys are trusted for *metadata* verification; package
+  installation still verifies against the root-owned rpm keyring. Note that with
+  the client on the shared `/var/cache/dnf`, that keyring is the same one your own
+  `dnf` consults, rather than a muc-owned copy. Every import is logged, so you can
+  audit what a host has trusted:
 
   ```bash
   journalctl -u muc-client | grep "imported repository signing keys"

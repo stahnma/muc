@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // dnfMetadataExpire bounds how stale dnf's cached repo metadata may be before a
@@ -22,6 +22,16 @@ import (
 // "updates" repo, days for others), so a freshly-published update stays invisible
 // on the dashboard until the cache happens to expire — the symptom that surfaced
 // as "dashboard shows 2 updates, `dnf update` shows 3".
+//
+// Shortening the expiry only settles the argument because the client shares
+// root's cache. Pinned to 1h on a *separate* cache it creates the mirror-image
+// bug: the client re-syncs, the administrator's shell keeps answering from its
+// own cache that stock repos consider valid for 6h, and the dashboard reports
+// updates that `sudo dnf update` says do not exist. Measured on a Fedora 44 host
+// with the client unprivileged — client cache 27 minutes old and listing 14
+// updates, root's 5h48m old and listing none, `dnf check-update --refresh` then
+// returning exactly those same 14. Sharing /var/cache/dnf means this refresh
+// warms the cache the administrator reads, so there is only one answer to give.
 const dnfMetadataExpire = "1h"
 
 // dnfMetadataExpireSetopt is the --setopt that actually shortens the expiry.
@@ -36,82 +46,37 @@ const dnfMetadataExpire = "1h"
 //	--setopt=*.metadata_expire=1h   -> metadata_expire = 3600   (1h, applied)
 const dnfMetadataExpireSetopt = "--setopt=*.metadata_expire=" + dnfMetadataExpire
 
-// dnfCacheDir returns the directory dnf should use for its metadata cache, or
-// "" to leave dnf's own default alone.
-//
-// Running as root we return "" so dnf uses /var/cache/dnf and shares the cache
-// that dnf-makecache.timer (and the admin's own dnf runs) keep warm.
-//
-// Running unprivileged dnf cannot write /var/cache/dnf, so it falls back to a
-// throwaway /var/tmp/dnf-$USER-XXXX directory. Under our systemd unit that is
-// doubly bad: PrivateTmp=true gives the service a private /var/tmp that is
-// destroyed on every restart, and with Restart=always the client re-downloads
-// tens of megabytes of repo metadata each time it comes back. Point dnf at the
-// service's StateDirectory instead so the cache actually persists.
-func dnfCacheDir() string {
-	if os.Geteuid() == 0 {
-		return ""
-	}
-
-	// systemd sets STATE_DIRECTORY from StateDirectory= (/var/lib/muc). It is
-	// colon-separated when several are configured; the first is ours.
-	if state := os.Getenv("STATE_DIRECTORY"); state != "" {
-		first, _, _ := strings.Cut(state, ":")
-		if first != "" {
-			return filepath.Join(first, "dnf")
-		}
-	}
-
-	if home := os.Getenv("HOME"); home != "" {
-		return filepath.Join(home, ".cache", "muc-dnf")
-	}
-	return ""
-}
-
 // dnfCheckUpdateArgs returns the arguments for the primary dnf check-update
-// invocation: the short metadata_expire that keeps results fresh, a persistent
-// cache directory, and -y to accept repository signing keys unattended.
+// invocation: the short metadata_expire that keeps results fresh, and -y to
+// accept repository signing keys unattended.
 //
-// On -y: a repo with repo_gpgcheck=1 verifies repomd.xml against a per-repo
-// keyring under the cache dir, separate from the system rpm keyring. When that
-// keyring lacks the key dnf wants to import it and prompts; unattended the
-// prompt is declined, skip_if_unavailable drops the repo, and its updates go
-// unreported. -y accepts instead, which is what makes the repo visible at all.
+// No cachedir is passed. dnf's default as root is /var/cache/dnf, which is
+// exactly where we want to be — the same cache the administrator's own `sudo
+// dnf` reads. An earlier version ran unprivileged and pinned a muc-owned cache
+// instead; see dnfMetadataExpire for why that made the dashboard and the shell
+// disagree.
+//
+// On -y: a repo with repo_gpgcheck=1 verifies repomd.xml against a keyring under
+// the cache dir, separate from the system rpm keyring. When that keyring lacks
+// the key dnf wants to import it and prompts; unattended the prompt is declined,
+// skip_if_unavailable drops the repo, and its updates go unreported. -y accepts
+// instead, which is what makes the repo visible at all.
 //
 // The trade is real and deliberate: the client will trust whatever key the
 // repo's configured gpgkey= URL serves, so a hijacked gpgkey URL or a
 // compromised repo host would be accepted rather than flagged. check-update
-// installs nothing, so the blast radius is confined to which keys this host's
-// muc cache trusts for metadata verification — not to package installation,
-// which still verifies against the root-owned rpm keyring. Every import is
-// logged (see parseDnfImportedKeys) so the decision is auditable after the fact.
+// installs nothing, so the blast radius is confined to which keys are trusted
+// for metadata verification — not to package installation, which still verifies
+// against the rpm keyring. Note that on the shared cache this keyring is the one
+// the administrator's dnf consults too. Every import is logged (see
+// parseDnfImportedKeys) so the decision is auditable after the fact.
 func dnfCheckUpdateArgs() []string {
-	args := []string{
+	return []string{
 		"check-update",
 		"-y",
 		"--setopt=skip_if_unavailable=True",
 		dnfMetadataExpireSetopt,
 	}
-	if dir := ensureDnfCacheDir(); dir != "" {
-		args = append(args, "--setopt=cachedir="+dir)
-	}
-	return args
-}
-
-// ensureDnfCacheDir creates the cache directory from dnfCacheDir if needed. A
-// failure is not fatal: we return "" and let dnf pick its own location rather
-// than failing the whole update check.
-func ensureDnfCacheDir() string {
-	dir := dnfCacheDir()
-	if dir == "" {
-		return ""
-	}
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		slog.Warn("Could not create dnf cache directory; falling back to dnf's default (cache will not persist across restarts)",
-			"dir", dir, "error", err)
-		return ""
-	}
-	return dir
 }
 
 // dnfSkippedRepoPatterns match the stderr dnf4 emits when skip_if_unavailable
@@ -289,12 +254,42 @@ func runDnfCheckUpdate(args ...string) (stdout []byte, stderrOut string, err err
 	return out, stderr.String(), nil
 }
 
+// unprivilegedDnfWarning keeps the warning below to one line per process. The
+// client re-checks every few minutes; without this the journal would fill with
+// the same misconfiguration notice hundreds of times a day.
+var unprivilegedDnfWarning sync.Once
+
+// warnIfUnprivilegedDnf reports the one dnf misconfiguration that produces a
+// wrong dashboard without producing any error: running the check as a user other
+// than root.
+//
+// It is not a permissions failure — an unprivileged dnf check-update succeeds and
+// returns a well-formed answer. It is simply an answer about a different metadata
+// cache than the one the administrator's `sudo dnf` reads, and the client pins a
+// shorter expiry than stock repos use, so the client's answer is the fresher of
+// the two. The visible result is a dashboard listing updates that `dnf update`
+// denies exist, which reads as the dashboard being broken when it is in fact
+// ahead. The shipped unit runs as root, so a host that reaches here has been
+// changed locally — a hand-written unit, a User= override, or the binary run
+// directly from a shell.
+func warnIfUnprivilegedDnf() {
+	if os.Geteuid() == 0 {
+		return
+	}
+	unprivilegedDnfWarning.Do(func() {
+		slog.Warn("muc-client is checking dnf updates unprivileged, so it reads a different metadata cache than root; the dashboard can legitimately report updates that `sudo dnf update` does not yet see. Run the service as root (the shipped muc-client.service does), or compare using `dnf check-update --refresh`",
+			"euid", os.Geteuid())
+	})
+}
+
 // getDnfUpdates fetches updates from dnf package manager
 func getDnfUpdates() UpdateResult {
 	if _, err := os.Stat(dnfPath); err != nil {
 		debugLog("dnf not found", "path", dnfPath)
 		return UpdateResult{ManagerDetected: false}
 	}
+
+	warnIfUnprivilegedDnf()
 
 	debugLog("Checking for dnf updates...")
 	return collectDnfUpdates(dnfRunner)
@@ -305,20 +300,15 @@ func getDnfUpdates() UpdateResult {
 // degraded/skipped bookkeeping can be exercised without a real dnf on the box.
 func collectDnfUpdates(run dnfRunFunc) UpdateResult {
 	// Try the full argument set first, then degrade one step at a time. Each
-	// fallback keeps the freshness flags (metadata_expire, cachedir) for as long
-	// as possible: dropping them silently reverts to each repo's own 6h+ expiry
-	// and a throwaway cache, which is the staleness this whole path exists to
-	// avoid. Only the last resort runs a bare check-update, and that run is
-	// recorded as degraded so an empty result is not trusted.
+	// fallback keeps metadata_expire for as long as possible: dropping it
+	// silently reverts to each repo's own 6h+ expiry, which is the staleness this
+	// whole path exists to avoid. Only the last resort runs a bare check-update,
+	// and that run is recorded as degraded so an empty result is not trusted.
 	out, stderr, err := run(dnfCheckUpdateArgs()...)
 	degraded := false
 	if err != nil {
 		debugLog("Retrying dnf check-update without skip_if_unavailable")
-		retry := []string{"check-update", "-y", dnfMetadataExpireSetopt}
-		if dir := ensureDnfCacheDir(); dir != "" {
-			retry = append(retry, "--setopt=cachedir="+dir)
-		}
-		out, stderr, err = run(retry...)
+		out, stderr, err = run("check-update", "-y", dnfMetadataExpireSetopt)
 	}
 	if err != nil {
 		debugLog("Retrying bare dnf check-update; results may come from stale metadata")

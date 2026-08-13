@@ -102,47 +102,30 @@ The key was successfully imported.`,
 	}
 }
 
-// TestDnfCheckUpdateArgsUsesPersistentCache verifies the client pins a cache
-// directory when unprivileged. Without it dnf falls back to /var/tmp/dnf-$USER-*,
-// which the unit's PrivateTmp=true destroys on every restart — so with
-// Restart=always the client re-downloads tens of megabytes of repo metadata
-// each time it comes back.
-func TestDnfCheckUpdateArgsUsesPersistentCache(t *testing.T) {
-	if testing.Short() {
-		t.Skip("creates a cache directory")
-	}
-	t.Setenv("STATE_DIRECTORY", t.TempDir())
+// TestDnfCheckUpdateArgsUsesDefaultCache pins the decision that the client must
+// NOT redirect dnf's cache.
+//
+// dnf's default as root is /var/cache/dnf, the same cache the administrator's
+// own `sudo dnf` reads, and sharing it is the entire reason the dashboard and
+// the shell agree. An earlier version pinned a muc-owned cache so an
+// unprivileged client could persist metadata; the cost was two caches with two
+// different expiries, so the client re-synced on its 1h pin while the shell kept
+// answering from a cache stock repos consider valid for 6h — and the dashboard
+// reported real updates that `dnf update` denied existed. Reintroducing any
+// cachedir override brings that back.
+func TestDnfCheckUpdateArgsUsesDefaultCache(t *testing.T) {
+	args := dnfCheckUpdateArgs()
 
-	if dnfCacheDir() == "" {
-		// Running as root the default /var/cache/dnf is correct and shared with
-		// dnf-makecache.timer, so no cachedir override is expected.
-		t.Skip("running as root; dnf's default cache dir is intentionally used")
-	}
-
-	found := false
-	for _, a := range dnfCheckUpdateArgs() {
+	for _, a := range args {
 		if strings.HasPrefix(a, "--setopt=cachedir=") {
-			found = true
+			t.Errorf("dnf check-update must use the default (shared) cache, got override %q in %v", a, args)
 		}
 	}
-	if !found {
-		t.Errorf("unprivileged dnf check-update args must pin a persistent cachedir; got %v", dnfCheckUpdateArgs())
-	}
-}
 
-// TestDnfCacheDirPrefersStateDirectory checks the systemd StateDirectory is used
-// ahead of $HOME, and that root is left on dnf's default.
-func TestDnfCacheDirPrefersStateDirectory(t *testing.T) {
-	t.Setenv("HOME", "/home/somewhere")
-	// systemd colon-separates STATE_DIRECTORY when several are configured.
-	t.Setenv("STATE_DIRECTORY", "/var/lib/muc:/var/lib/other")
-
-	got := dnfCacheDir()
-	if got == "" {
-		t.Skip("running as root; dnf's default cache dir is intentionally used")
-	}
-	if got != "/var/lib/muc/dnf" {
-		t.Errorf("dnfCacheDir() = %q, want /var/lib/muc/dnf", got)
+	// The freshness pin is the other half: without it the client inherits each
+	// repo's own 6h+ expiry and the dashboard lags reality.
+	if !slices.Contains(args, dnfMetadataExpireSetopt) {
+		t.Errorf("dnf check-update args must pin metadata_expire; got %v", args)
 	}
 }
 

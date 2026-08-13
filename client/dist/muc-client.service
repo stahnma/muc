@@ -5,8 +5,20 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=muc
-Group=muc
+# The client's whole job is asking the system package manager what is pending,
+# and every package manager this is packaged for needs root to answer usefully:
+# apt and zypper cannot refresh their metadata otherwise, and dnf/yum would
+# answer from a per-user cache the administrator's own `sudo dnf` never reads —
+# fresher than the shell's, so the dashboard would report real updates that
+# `dnf update` denies exist. See postinstall.sh for the full story.
+#
+# The client writes nothing itself (its only write was the unprivileged dnf
+# cache), so there is no StateDirectory here. That matters: systemd re-chowns a
+# StateDirectory to the unit's user on every start, recursively, so a root client
+# sharing /var/lib/muc with muc-server would take the directory away from it and
+# break systems.db on the server's next restart.
+User=root
+Group=root
 ExecStart=/usr/bin/muc-client
 # muc-client-recheck.path reloads us after a package transaction; SIGUSR1 makes
 # the client re-check for updates immediately instead of waiting out its poll
@@ -14,12 +26,6 @@ ExecStart=/usr/bin/muc-client
 ExecReload=/bin/kill -s USR1 $MAINPID
 Restart=always
 RestartSec=30
-# The client points dnf's cache at $STATE_DIRECTORY (/var/lib/muc). Running
-# unprivileged dnf cannot write /var/cache/dnf and otherwise falls back to a
-# /var/tmp/dnf-$USER-* directory that PrivateTmp below destroys on every restart
-# — which, with Restart=always, means re-downloading tens of megabytes of repo
-# metadata each time the service comes back.
-StateDirectory=muc
 # The client shells out to the system package manager (dnf/apt/yum) to check for
 # updates. Those tools must write to /var/cache, /var/lib and /var/log, so
 # ProtectSystem=strict (which makes the whole FS read-only) breaks update

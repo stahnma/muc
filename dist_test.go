@@ -45,17 +45,72 @@ func TestClientSystemdUnit(t *testing.T) {
 	assertContains(t, content, "[Install]", "missing [Install] section")
 	assertContains(t, content, "ExecStart=", "missing ExecStart directive")
 	assertContains(t, content, "Type=", "missing Type directive")
-	assertContains(t, content, "User=muc", "missing User=muc")
 	assertContains(t, content, "Restart=always", "missing Restart=always")
 	// muc-client-recheck.service reloads the client after a package transaction;
 	// without ExecReload that reload is a no-op and the dashboard only catches up
 	// on the next poll.
 	assertContains(t, content, "ExecReload=", "missing ExecReload; muc-client-recheck.service cannot trigger a re-check")
 	assertContains(t, content, "USR1", "ExecReload must send SIGUSR1, which the client handles as 're-check now'")
-	// The client pins dnf's cache to $STATE_DIRECTORY. Without StateDirectory an
-	// unprivileged dnf falls back to a /var/tmp dir that PrivateTmp destroys on
-	// every restart, forcing a full metadata re-download each time.
-	assertContains(t, content, "StateDirectory=muc", "missing StateDirectory=muc")
+
+	// The client asks the system package manager what is pending, and every
+	// packaged target needs root for a trustworthy answer: apt and zypper cannot
+	// refresh metadata otherwise, and dnf/yum would answer from a per-user cache
+	// the administrator's `sudo dnf` never reads — fresher than the shell's, so
+	// the dashboard would report real updates that `dnf update` denies exist.
+	assertContains(t, content, "User=root", "client must run as root; an unprivileged dnf reads a different metadata cache than the administrator's shell")
+
+	// No StateDirectory. The client writes nothing, and systemd re-chowns a
+	// StateDirectory to the unit's user on every start, recursively — so a root
+	// client sharing /var/lib/muc with muc-server (which runs as muc and keeps
+	// systems.db there) takes the directory away from it. The server does not
+	// fail immediately: it holds a writable fd opened before the chown, and
+	// permission is checked at open(), not per write. It fails on its next
+	// restart, looking unrelated to whatever touched the client.
+	if strings.Contains(content, "StateDirectory=") {
+		t.Error("client unit must not set StateDirectory: it writes nothing, and systemd would chown /var/lib/muc away from muc-server")
+	}
+}
+
+// TestClientPostinstallRetiresDropIn covers the upgrade path off the old "run as
+// muc, override to root per package manager" arrangement.
+//
+// The unit sets User=root itself now, so a stale 10-root.conf would keep
+// applying settings this package no longer manages — including the
+// StateDirectory=muc that takes /var/lib/muc away from muc-server.
+func TestClientPostinstallRetiresDropIn(t *testing.T) {
+	content := readFileOrFail(t, "client/dist/postinstall.sh")
+
+	assertContains(t, content, "rm -f \"$DROPIN_DIR/10-root.conf\"",
+		"must remove the drop-in the shipped unit has superseded")
+	// Older packages shipped it under a zypper-specific name.
+	assertContains(t, content, "10-zypper-root.conf",
+		"must clean up the legacy drop-in name from older packages")
+
+	// The client must not write a drop-in any more: doing so would reintroduce
+	// the StateDirectory that takes /var/lib/muc from muc-server. Match the
+	// literal unit-section header a written drop-in must contain, at the start of
+	// a line — the prose above explains the old User=root arrangement and should
+	// not trip this.
+	if strings.Contains(content, "\n[Service]") {
+		t.Error("postinstall must not write a systemd drop-in; the shipped unit sets User=root directly")
+	}
+}
+
+// TestClientPreinstallCreatesNoUser records that the client package owns no
+// system user and no state directory.
+//
+// The client runs as root and its only filesystem write was the unprivileged dnf
+// metadata cache, which root does not use — so the muc user and /var/lib/muc
+// belong solely to muc-server. Creating them here would also mean chowning a
+// directory the server owns, on a host running both.
+func TestClientPreinstallCreatesNoUser(t *testing.T) {
+	content := readFileOrFail(t, "client/dist/preinstall.sh")
+
+	for _, cmd := range []string{"useradd", "groupadd", "chown"} {
+		if strings.Contains(content, cmd) {
+			t.Errorf("client preinstall must not run %s: the muc user and /var/lib/muc belong to muc-server", cmd)
+		}
+	}
 }
 
 // TestClientRecheckUnits covers the path/service pair that makes the dashboard
@@ -88,7 +143,9 @@ func TestShellScripts(t *testing.T) {
 		{"server/dist/preinstall.sh", []string{"groupadd", "useradd"}},
 		{"server/dist/postinstall.sh", []string{"daemon-reload"}},
 		{"server/dist/preremove.sh", []string{"systemctl stop"}},
-		{"client/dist/preinstall.sh", []string{"groupadd", "useradd"}},
+		// The client package intentionally creates no user; see
+		// TestClientPreinstallCreatesNoUser.
+		{"client/dist/preinstall.sh", nil},
 		{"client/dist/postinstall.sh", []string{"daemon-reload", "muc-client-recheck.path"}},
 		{"client/dist/preremove.sh", []string{"systemctl stop"}},
 		{"client/dist/postremove.sh", []string{"muc-client-recheck.path"}},

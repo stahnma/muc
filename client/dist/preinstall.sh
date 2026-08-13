@@ -1,13 +1,7 @@
 #!/bin/sh
-if ! getent group muc >/dev/null 2>&1; then
-    groupadd --system muc
-fi
-if ! getent passwd muc >/dev/null 2>&1; then
-    useradd --system --gid muc --home-dir /var/lib/muc --shell /usr/sbin/nologin muc
-fi
-
-if [ ! -d /var/lib/muc ]; then
-    mkdir -p /var/lib/muc
-fi
-chown muc:muc /var/lib/muc
-chmod 0750 /var/lib/muc
+# The client runs as root and writes nothing to disk, so it needs neither the muc
+# user nor /var/lib/muc. Both belong to muc-server, whose own preinstall creates
+# them; on a host running both, this package deliberately leaves them alone.
+#
+# Nothing to do here. Kept as a no-op so the packaging keeps a stable script set.
+exit 0
