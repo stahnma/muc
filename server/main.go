@@ -4,9 +4,11 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"server/api"
 	"server/consul"
 	"server/metrics"
 	"server/nats"
+	"server/runlog"
 	"server/storage"
 	"server/web"
 	"syscall"
@@ -56,22 +58,54 @@ func main() {
 		slog.Info("Using external NATS server", "url", natsURL)
 	}
 
-	// Start NATS subscriber in a separate goroutine
-	go func() {
-		slog.Info("Starting NATS subscriber...")
-		nats.StartSubscriber(store, natsURL)
-	}()
+	// Connect to NATS and start the subscriber
+	conn, err := nats.Connect(natsURL)
+	if err != nil {
+		slog.Error("Failed to connect to NATS", "error", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	// Live output of update runs in flight. In memory by design: it is
+	// commentary on a run, and the tail worth keeping is saved with the system
+	// when the run ends.
+	runs := runlog.New()
+
+	slog.Info("Starting NATS subscriber...")
+	if err := conn.StartSubscriber(store, runs); err != nil {
+		slog.Error("Failed to subscribe to NATS subjects", "error", err)
+		os.Exit(1)
+	}
+
+	// Remote updates are off unless this server is configured to offer them.
+	// The hosts themselves opt in separately, and theirs is the opt-in that
+	// actually gates anything — this one decides whether the dashboard exposes
+	// the button and the route at all.
+	var updater api.UpdateRequester
+	if config.RemoteUpdates {
+		updater = conn
+		slog.Warn("Remote updates are enabled: hosts that have opted in can be patched from the dashboard")
+	} else {
+		slog.Info("Remote updates are disabled (set remote_updates: true to enable them)")
+	}
 
 	// Start the web server
 	slog.Info("Starting web server...")
-	go web.StartWebServer(store, config.HTTPPort, Version)
+	go web.StartWebServer(store, config.HTTPPort, Version, updater, runs)
 
-	// Register with Consul
-	deregisterConsul, err := consul.Register(config.ConsulURL, config.HTTPPort, config.NATSPort, config.ConsulTags, config.ConsulNATSTags)
-	if err != nil {
-		slog.Warn("Failed to register with Consul, service will run without service discovery", "error", err)
-	} else {
-		defer deregisterConsul()
+	// Register with Consul in the background. Registration retries until it
+	// succeeds and is re-asserted afterward, so a Consul agent that is down at
+	// startup (or restarted with a cleared data dir) delays discovery instead
+	// of leaving the server unroutable for the life of the process.
+	registrar, err := consul.New(config.ConsulURL, config.HTTPPort, config.NATSPort, config.ConsulTags, config.ConsulNATSTags)
+	switch {
+	case err != nil:
+		slog.Error("Consul registration disabled by a configuration error, service will not be discoverable", "error", err)
+	case registrar == nil:
+		slog.Info("No consul_url configured, running without service discovery")
+	default:
+		registrar.Start()
+		defer registrar.Stop()
 	}
 
 	// Start business metrics updater

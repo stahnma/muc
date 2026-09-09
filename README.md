@@ -77,6 +77,7 @@ Configuration is powered by [Viper](https://github.com/spf13/viper).
 | `consul_url` | `MUC_CONSUL_URL` | `http://localhost:8500` | Consul agent URL for service registration |
 | `consul_tags` | `MUC_CONSUL_TAGS` | (none) | Comma-separated Consul tags for the HTTP (`muc`) service |
 | `consul_nats_tags` | `MUC_CONSUL_NATS_TAGS` | (falls back to `consul_tags`) | Comma-separated Consul tags for the NATS (`muc-nats`) service |
+| `remote_updates` | `MUC_REMOTE_UPDATES` | `false` | Allow the dashboard to run updates on hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard)) |
 
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
@@ -112,6 +113,8 @@ consul_tags:
 consul_nats_tags:
   - production
   - nats
+# Off by default. See "Running updates from the dashboard".
+remote_updates: false
 ```
 
 ### Client Configuration
@@ -132,6 +135,8 @@ The client supports automatic server discovery using multiple methods, tried in 
 - `MUC_NATS_DISCOVERY_SERVICE`: Service name for DNS SRV lookup (default: tries `muc-server`, `muc-nats`, `nats` in order)
 - `MUC_CONSUL_HTTP_ADDR`: Consul API address (default: `localhost:8500`)
 - `MUC_NATS_CONSUL_SERVICE`: Consul service name to query (default: tries `nats`, `muc-nats`, `muc-server` in order)
+- `MUC_ALLOW_REMOTE_UPDATES`: Let the dashboard run updates on this host (default: `false`)
+- `MUC_UPDATE_COMMAND`: The update script to run (default: the packaged `/usr/libexec/muc/upd`)
 
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
@@ -305,6 +310,7 @@ The web dashboard provides:
 - Last seen timestamps, plus when the update data itself was collected
 - Warnings when an update check was incomplete (e.g. a repository was skipped)
 - Tailnet status for hosts that use Tailscale (see below)
+- An update button for hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard))
 
 ### Tailnet status
 
@@ -339,6 +345,190 @@ is sticky: once a host has been seen on a tailnet the server remembers which one
 so a host that drops off — or whose client stops reporting Tailscale entirely —
 shows a grey dot naming the tailnet it was last on, rather than silently losing
 its indicator.
+
+## Running updates from the dashboard
+
+The dashboard can ask a host to install its pending updates: expand the host's
+row and press **⬇️ Run updates now**. The host runs `upd` — the same script you
+would run in its shell, shipped with the client package at
+`/usr/libexec/muc/upd` — which picks the package manager from what is installed
+rather than from the distro name.
+
+**It is off by default, and both ends have to agree before anything can happen:**
+
+| Where | Setting | Effect |
+|-------|---------|--------|
+| Each host (`/etc/muc/client.yml`) | `allow_remote_updates: true` | The client subscribes to its update-command subject. Without it the command reaches nobody. |
+| The server (`/etc/muc/config.yml`) | `remote_updates: true` | The dashboard draws the button and `POST /api/systems/{hostname}/update` works. Without it the route returns 403. |
+
+The host's opt-in is the one that actually gates anything. A client that has not
+set `allow_remote_updates` never subscribes, so no server configuration — and no
+one poking the API by hand — can make it install a thing. That is why the opt-in
+lives with the host being patched rather than only on the server: the machine
+that takes the risk is the machine that consents to it.
+
+**This is a convenience for a trusted network, not an authorization boundary.**
+Neither the dashboard nor NATS authenticates anyone, so on a host that has opted
+in, anything that can reach the NATS port can trigger an update. That is an
+acceptable trade on a home LAN and is not one anywhere else.
+
+Enable it on a host:
+
+```yaml
+# /etc/muc/client.yml
+allow_remote_updates: true
+# Optional; defaults to the packaged /usr/libexec/muc/upd, then
+# /usr/local/bin/upd, /usr/bin/upd, then 'upd' on PATH.
+# update_command: /usr/local/bin/upd
+```
+
+```bash
+systemctl restart muc-client
+```
+
+A host that opts in but has no usable update script logs the reason and does not
+advertise the capability, so the dashboard shows no button for it rather than
+one that always fails.
+
+### What happens during a run
+
+The request is answered as soon as the host accepts it, and the run reports back
+separately, so the dashboard shows progress as it goes: **⏳ Update running**
+next to the host's update badge, and in the expanded row a **Command output**
+pane that fills in live as the package manager works. One run at a time per host
+— a second request while one is in progress is refused with "an update is
+already running on this host". When the run finishes the client re-checks for
+updates, so the pending list catches up within a minute without waiting out the
+poll interval.
+
+### Where the update actually runs
+
+Two paths, chosen per host rather than assumed:
+
+**With systemd, as root**, the client starts the command in a named transient
+unit (`systemd-run --unit=muc-update-<id> --wait`) rather than forking it. Two
+reasons, both of which otherwise look like a mysteriously half-finished upgrade:
+
+- The transaction may upgrade `muc-client` itself, whose scriptlet restarts the
+  unit — and a restart kills everything in the unit's control group, including
+  the `dnf` running the transaction. `setsid` does not help: a forked child in
+  its own session still dies, because the cgroup is what is being killed.
+- `muc-client.service` is sandboxed, and a forked child inherits all of it:
+  `ProtectSystem=full` (a read-only `/usr` no package manager can install into),
+  `PrivateTmp`, `ProtectHome`, and `NoNewPrivileges` — which also blocks the
+  SELinux transitions rpm scriptlets may expect. A transient unit starts in a
+  context close to what `sudo dnf update` would have given it.
+
+**Everywhere else** — a host without systemd, a container, macOS, an
+unprivileged client, or a systemd that refuses the transient unit — the client
+forks the command directly and reads its output from pipes. Streaming, the exit
+status, and the run record all behave the same; the difference is that the
+update inherits whatever environment the client has.
+
+That path is not left fragile: `muc-client.service` sets `KillMode=process`, so
+systemd signals only the client and an update it forked runs to completion even
+if a transaction restarts the unit underneath it. On a host with no systemd
+there is no such hazard to begin with.
+
+Either way, a run whose client was restarted mid-flight completes on the host but
+never reports its result. The dashboard shows such a
+run as **❓ Update result unknown** after 45 minutes rather than claiming it is
+still going, and the next check-in shows what actually got installed.
+
+Runs are bounded at 30 minutes.
+
+### Live output, and what is kept
+
+Output is streamed as it is produced, coalesced into a chunk every 400 ms (or
+sooner once 16 KB has piled up) rather than sent line by line — an upgrade emits
+hundreds of short lines, and one message each would be a message storm nobody
+could read anyway. The pane opens by itself while a run is going and on a
+failure, where the output is the answer; after a success it collapses, since it
+is mostly package names.
+
+Two different things hold that output, and they are worth telling apart:
+
+The unit's output goes to the journal, and the client follows it there
+(`journalctl --follow _SYSTEMD_UNIT=muc-update-<id>.service`) to produce the live
+stream. The obvious alternative, `systemd-run --pipe`, hands the client's own
+file descriptors to the unit — but passing them travels over D-Bus, and on an
+SELinux system that message is refused for a service in `unconfined_service_t`:
+the bus drops the connection and `systemd-run` reports `Failed to start
+transient service unit: Connection reset by peer` **without running anything at
+all**. Rocky 10 does exactly this. Going through the journal asks nothing of the
+bus beyond starting the unit, and leaves the full log on the host as a side
+effect.
+
+- **The live buffer** is in memory on the server, 64 KB per host, for the run in
+  flight. It is what a page opened or reloaded mid-run is seeded from, through
+  `GET /api/systems/{hostname}/update/output`. It is not persisted: a server
+  restart forgets it, which is the right trade for a running commentary.
+- **The saved tail** is the last 8 KB, stored with the system when the run ends.
+  That is what survives a reload once the run is over, and what the dashboard
+  shows for a run it did not watch.
+
+A browser that watched a run keeps the fuller live text on screen after it
+finishes, so nothing shrinks under you; reload and you get the 8 KB tail.
+
+Streaming stops after 2 MB in one run, on the theory that anything past that is a
+repository serving something strange rather than output worth reading. The run
+still finishes and its tail still arrives. Chunks are numbered, and the server
+drops them rather than queueing without limit if a browser cannot keep up — the
+pane says `[… some live output was dropped …]` where that happened rather than
+splicing two unrelated moments together.
+
+### When a run fails before it starts
+
+`Failed to start transient service unit: ...` in the output pane means systemd
+would not create the unit, so **the update command never ran and nothing was
+installed** — the exit status belongs to `systemd-run`, not to the package
+manager.
+
+One instance of this is fixed rather than diagnosed: `Connection reset by peer`
+was `--pipe`'s file-descriptor passing being refused by SELinux, and the client
+no longer uses `--pipe` (see above). If some other reason turns up, the client
+probes before each run: when a transient unit cannot be started it says so at
+the top of the output, runs the command directly, and warns when the sandbox
+will defeat that too (a direct run under `ProtectSystem=full` cannot write
+`/usr`). To find out why systemd refused, on the affected host:
+
+```bash
+# does it work at all, from a root shell?
+sudo systemd-run --quiet --pipe --wait --collect /bin/true && echo ok
+
+# what confinement is the client actually running under?
+systemctl show muc-client -p ProtectSystem -p NoNewPrivileges -p PrivateTmp -p SELinuxContext
+
+# what did the client and systemd say at the time?
+journalctl -u muc-client -n 50 --no-pager
+sudo ausearch -m avc -ts recent | tail -20   # SELinux denials, if any
+```
+
+If the root shell works and the client does not, the client's confinement is
+what is blocking it. If neither works, it is the host's systemd or D-Bus. Where
+transient units cannot be made to work, let the direct run install packages
+with an override:
+
+```bash
+sudo systemctl edit muc-client
+# [Service]
+# ProtectSystem=false
+```
+
+That trades the sandbox for a working update, and leaves the other hazard in
+place: a transaction that upgrades `muc-client` restarts the unit and kills the
+package manager with it, since both are then in the same control group.
+
+The complete, untruncated output stays on the host, in the journal, under the
+unit the run used:
+
+```bash
+journalctl -u muc-update-<id>            # <id> is shown in the dashboard's run record
+journalctl -u 'muc-update-*' --since -1d # every run of the last day
+```
+
+`--collect` removes the unit once it has finished, but its journal entries are
+records and outlive it.
 
 ## Alternatives
 

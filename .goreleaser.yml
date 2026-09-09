@@ -88,6 +88,13 @@ nfpms:
       - src: client/dist/client.yml
         dst: /etc/muc/client.yml
         type: config|noreplace
+      # The update script the client runs when the dashboard asks it to patch
+      # this host. It is inert unless allow_remote_updates is set, and is also
+      # perfectly usable by hand: `/usr/libexec/muc/upd -n` for a dry run.
+      - src: client/scripts/upd
+        dst: /usr/libexec/muc/upd
+        file_info:
+          mode: 0755
     scripts:
       preinstall: client/dist/preinstall.sh
       postinstall: client/dist/postinstall.sh

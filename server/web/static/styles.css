@@ -502,6 +502,155 @@ th.sortable.descending::after {
     font-size: 13px;
 }
 
+/* Marks a host with an update run in progress, alongside its update badge. */
+.update-running-indicator {
+    color: var(--accent-blue);
+    margin-left: 4px;
+    font-size: 14px;
+}
+
+/* The record of the last dashboard-triggered update run, in the expanded
+   details. Colour carries the outcome, matching the badges in the table:
+   blue while it runs, green when it worked, red when it did not, orange when
+   the client stopped reporting and the outcome is unknown. */
+.update-run {
+    margin: 20px 0 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--border-color);
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.update-run h4 {
+    margin: 0 0 6px;
+    font-size: 14px;
+}
+
+.update-run p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.update-run-running {
+    border-left-color: var(--accent-blue);
+}
+
+.update-run-running h4 {
+    color: var(--accent-blue);
+}
+
+.update-run-succeeded {
+    border-left-color: var(--accent-green);
+}
+
+.update-run-succeeded h4 {
+    color: var(--accent-green);
+}
+
+.update-run-failed {
+    border-left-color: var(--accent-red);
+}
+
+.update-run-failed h4 {
+    color: var(--accent-red);
+}
+
+.update-run-unknown {
+    border-left-color: var(--accent-orange);
+}
+
+.update-run-unknown h4 {
+    color: var(--accent-orange);
+}
+
+/* The command's output. Open while the run streams and on a failure, where it
+   is the answer; collapsed after a success, where it is a few hundred lines of
+   package names. */
+.update-run-output {
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+.update-run-output summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.update-run-output pre {
+    /* Keep a scroll gesture inside the pane. Without this, reaching the top or
+       the bottom hands the rest of the scroll to the page, which throws the
+       reader out of the output they were following. */
+    overscroll-behavior: contain;
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    max-height: 320px;
+    overflow: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Marks the pane as following a run in progress rather than showing a record
+   of one that ended. */
+.update-run-live {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(88, 166, 255, 0.15);
+    border: 1px solid var(--accent-blue);
+    color: var(--accent-blue);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    animation: update-run-pulse 2s ease-in-out infinite;
+}
+
+@keyframes update-run-pulse {
+    50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .update-run-live {
+        animation: none;
+    }
+}
+
+.update-run-waiting {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Run-updates button: it patches a live host, so it reads as an action rather
+   than a link, but it is not destructive the way delete is. */
+.run-update-btn {
+    background: rgba(88, 166, 255, 0.15) !important;
+    border: 1px solid var(--accent-blue) !important;
+    color: var(--accent-blue) !important;
+    margin-right: 8px;
+    transition: all 0.2s ease;
+}
+
+.run-update-btn:hover:not(:disabled) {
+    background: rgba(88, 166, 255, 0.25) !important;
+    border-color: var(--accent-blue) !important;
+    color: var(--accent-blue) !important;
+}
+
+.run-update-btn:disabled {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
 /* Delete button styles */
 .delete-system-btn {
     background: rgba(248, 81, 73, 0.15) !important;

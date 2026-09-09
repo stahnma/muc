@@ -65,7 +65,18 @@
         "version": "1.25.0",
         "source": "apt"
       }
-    ]
+    ],
+    "remote_updates_enabled": true,
+    "last_update_run": {
+      "id": "9f2c1b0a4d5e6f70",
+      "status": "succeeded",
+      "requested_by": "192.168.1.20",
+      "command": "/usr/libexec/muc/upd",
+      "started_at": "2024-01-15T10:22:11Z",
+      "finished_at": "2024-01-15T10:24:47Z",
+      "exit_code": 0,
+      "output": "upd: done\n"
+    }
   }
 ]</div>
             </div>
@@ -168,6 +179,122 @@
 
         <div class="endpoint">
             <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/systems/{hostname}/update</span>
+            </div>
+            <div class="description">
+                Asks a host to install its pending updates, by running its update script (<code>upd</code>) as root.
+                Returns as soon as the host has accepted the job, not when the run finishes: progress and the outcome
+                arrive later as ordinary system updates, in the <code>last_update_run</code> field.
+                <br><br>
+                Both ends must have opted in — the server with <code>remote_updates: true</code>, and the host itself
+                with <code>allow_remote_updates: true</code> in its client config. A host that has not opted in never
+                subscribes to the command subject, so it cannot be updated whatever the server is configured to do.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Path Parameters</div>
+                <div class="param">
+                    <div class="param-name">hostname</div>
+                    <div class="param-desc">The hostname of the system to update (required)</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">202 Accepted</span>
+                    <span>The host accepted the job and the run has started</span>
+                </div>
+                <div class="code-block">{
+  "status": "accepted",
+  "hostname": "server1.example.com",
+  "id": "9f2c1b0a4d5e6f70",
+  "command": "/usr/libexec/muc/upd",
+  "message": "Update started on server1.example.com"
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">403 Forbidden</span>
+                    <span>Remote updates are disabled on this server</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>System not found</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code notfound">409 Conflict</span>
+                    <span>The host has not opted in, or an update is already running on it</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code error">503 Service Unavailable</span>
+                    <span>No response from the host: it is offline, or no longer accepting update commands</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/systems/{hostname}/update/output</span>
+            </div>
+            <div class="description">
+                Returns the live output held for the host's most recent update run — the last 64 KB, in memory only.
+                This is what a page opened mid-run is seeded from; the same output also arrives over the WebSocket as
+                it is produced. What survives a server restart is the shorter tail on <code>last_update_run</code> in
+                <code>/api/systems/{hostname}</code>.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Path Parameters</div>
+                <div class="param">
+                    <div class="param-name">hostname</div>
+                    <div class="param-desc">The hostname whose run output to return (required)</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>Output held for that host's current or most recent run</span>
+                </div>
+                <div class="code-block">{
+  "id": "9f2c1b0a4d5e6f70",
+  "seq": 42,
+  "output": "upd: upgrading packages\n",
+  "truncated": false
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>No run output is held for that host</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/features</span>
+            </div>
+            <div class="description">
+                Reports which optional capabilities this server offers, so the dashboard can hide controls that would
+                only ever fail.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>Feature flags</span>
+                </div>
+                <div class="code-block">{
+  "remote_updates": true
+}</div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
                 <span class="method get">GET</span>
                 <span class="path">/ws</span>
             </div>
@@ -184,6 +311,17 @@
                 <div class="param">
                     <div class="param-name">Messages</div>
                     <div class="param-desc">Server sends JSON-encoded system update objects when systems report their status</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">Live update output</div>
+                    <div class="param-desc">
+                        While an update run is in progress, the server also sends chunks of its output, distinguished by a
+                        <code>type</code> field that system updates do not carry:
+                        <code>{"type": "update_output", "hostname": "...", "id": "...", "seq": 7, "chunk": "..."}</code>.
+                        Chunks are numbered per run so a gap is visible; the server drops them rather than queueing without
+                        limit if a client cannot keep up. The client reads the output from the journal of the transient unit
+                        the run uses, so the complete log stays on the host in <code>journalctl -u muc-update-{id}</code>.
+                    </div>
                 </div>
                 <div class="param">
                     <div class="param-name">Keepalive</div>

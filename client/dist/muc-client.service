@@ -26,6 +26,17 @@ ExecStart=/usr/bin/muc-client
 ExecReload=/bin/kill -s USR1 $MAINPID
 Restart=always
 RestartSec=30
+# Where a transient unit is unavailable — a host without systemd, a container, an
+# unprivileged client, or a systemd that refuses — the client forks the update
+# directly instead, and that child lives in this unit's control group. With the
+# default KillMode=control-group, a transaction that upgrades muc-client itself
+# restarts this unit and kills the package manager running it, mid-write. That is
+# not theoretical: a forked child dies on restart even in its own session
+# (setsid does not escape the cgroup), measured on this unit's settings.
+# KillMode=process signals only the client, so an update it started runs to
+# completion. The client's other children are second-long package-manager
+# queries, so nothing else is left behind by this.
+KillMode=process
 # The client shells out to the system package manager (dnf/apt/yum) to check for
 # updates. Those tools must write to /var/cache, /var/lib and /var/log, so
 # ProtectSystem=strict (which makes the whole FS read-only) breaks update

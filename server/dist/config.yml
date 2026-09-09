@@ -19,3 +19,14 @@ http_port: 8080
 # consul_nats_tags applies to the NATS ("muc-nats") service.
 # Leave unset to reuse consul_tags for both services.
 # consul_nats_tags: muc-nats,monitoring
+
+# Remote updates (off by default)
+#
+# When true, the dashboard offers an "install pending updates" button for hosts
+# that have themselves opted in (allow_remote_updates in their client config),
+# and the POST /api/systems/{hostname}/update route starts working. With this
+# false the route returns 403 and no button is drawn.
+#
+# There is no authentication in front of the dashboard or NATS, so this is a
+# home-network convenience, not an authorization boundary.
+# remote_updates: true

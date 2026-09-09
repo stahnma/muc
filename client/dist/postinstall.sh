@@ -84,4 +84,8 @@ systemctl try-restart muc-client
 # Watch the package database so a `dnf upgrade` is reflected on the dashboard in
 # seconds rather than at the next poll. Not fatal if it cannot be enabled — the
 # client still polls.
+# Clear a failed state left by older packages, whose recheck units had no
+# StartLimitIntervalSec=0 and so latched into 'failed' after the first large
+# package transaction. Enabling a failed path unit does not restart it.
+systemctl reset-failed muc-client-recheck.path muc-client-recheck.service 2>/dev/null || true
 systemctl enable --now muc-client-recheck.path 2>/dev/null || true

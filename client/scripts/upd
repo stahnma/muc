@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+#
+# upd — bring this host's packages fully up to date.
+#
+# Detects the package manager rather than the distro name, so derivatives
+# (Mint, Pop!_OS, Rocky, Alma, ...) work without needing an entry in a list:
+#
+#   deb-based   apt-get update && apt-get dist-upgrade -y
+#   rpm-based   dnf update -y        (yum on releases that predate dnf)
+#
+# Exit codes:
+#   0  up to date (something may or may not have been upgraded)
+#   1  the upgrade itself failed
+#   2  usage error
+#   3  no supported package manager on this host
+#   4  not running as root and no sudo available
+#   5  another package manager is already running
+
+set -Eeuo pipefail
+
+readonly PROG=${0##*/}
+
+log()  { printf '%s: %s\n' "$PROG" "$*"; }
+warn() { printf '%s: %s\n' "$PROG" "$*" >&2; }
+die()  { local rc=$1; shift; printf '%s: error: %s\n' "$PROG" "$*" >&2; exit "$rc"; }
+
+trap 'die 1 "unexpected failure at line $LINENO"' ERR
+
+usage() {
+  cat <<EOF
+Usage: $PROG [-n] [-h]
+
+Update every package on this host, using whichever package manager it has.
+
+  -n   dry run — report what would be upgraded, change nothing
+  -h   show this help
+EOF
+}
+
+dry_run=0
+while getopts ':nh' opt; do
+  case $opt in
+    n) dry_run=1 ;;
+    h) usage; exit 0 ;;
+    \?) usage >&2; die 2 "unknown option -$OPTARG" ;;
+    :)  usage >&2; die 2 "option -$OPTARG requires an argument" ;;
+  esac
+done
+shift $((OPTIND - 1))
+[[ $# -eq 0 ]] || { usage >&2; die 2 "unexpected argument: $1"; }
+
+# Run the real work as root. Re-exec through sudo rather than requiring the
+# caller to remember, but never silently do nothing if there is no way up.
+declare -a SUDO=()
+if [[ $(id -u) -ne 0 ]]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO=(sudo -n)
+    if ! sudo -n true 2>/dev/null; then
+      SUDO=(sudo)   # will prompt; fine when there is a terminal
+    fi
+  else
+    die 4 "must run as root, and sudo is not installed"
+  fi
+fi
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# A concurrent apt/dnf run makes the upgrade block on a lock (or fail halfway).
+# Say so plainly instead of hanging with no output, which is what you get when
+# unattended-upgrades or PackageKit got there first.
+check_not_busy() {
+  local pat=$1 pids
+  if have pgrep && pids=$(pgrep -d' ' -x "$pat" 2>/dev/null) && [[ -n $pids ]]; then
+    die 5 "another package manager is running (pid: ${pids% }) — try again later"
+  fi
+}
+
+update_deb() {
+  # apt-get, not apt: apt prints "does not have a stable CLI interface" when
+  # its output is not a terminal, and its behaviour is not guaranteed between
+  # releases. dist-upgrade is the same operation either way.
+  local apt
+  if have apt-get; then apt=apt-get
+  elif have apt; then apt=apt
+  else die 3 "dpkg is present but neither apt-get nor apt was found"
+  fi
+
+  check_not_busy apt-get
+  check_not_busy unattended-upgr
+
+  export DEBIAN_FRONTEND=noninteractive
+
+  log "refreshing package lists"
+  if ! "${SUDO[@]}" "$apt" update -q; then
+    die 1 "'$apt update' failed — package lists are stale, refusing to upgrade"
+  fi
+
+  if (( dry_run )); then
+    log "dry run — would run: $apt dist-upgrade -y"
+    "${SUDO[@]}" "$apt" -s dist-upgrade || die 1 "'$apt -s dist-upgrade' failed"
+    return 0
+  fi
+
+  log "upgrading packages"
+  # Keep any locally modified conffiles instead of stopping to ask, which
+  # would hang a non-interactive run forever.
+  if ! "${SUDO[@]}" "$apt" dist-upgrade -y \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold; then
+    die 1 "'$apt dist-upgrade' failed"
+  fi
+
+  [[ -f /var/run/reboot-required ]] && log "a reboot is required"
+  return 0
+}
+
+update_rpm() {
+  local dnf
+  if have dnf; then dnf=dnf
+  elif have yum; then dnf=yum
+  else die 3 "rpm is present but neither dnf nor yum was found"
+  fi
+
+  check_not_busy "$dnf"
+  check_not_busy packagekitd
+
+  if (( dry_run )); then
+    log "dry run — would run: $dnf update -y"
+    # check-update exits 100 when updates are available, 0 when none are,
+    # and anything else on a real error.
+    local rc=0
+    "${SUDO[@]}" "$dnf" check-update || rc=$?
+    case $rc in
+      0)   log "no updates available" ;;
+      100) log "updates are available (shown above)" ;;
+      *)   die 1 "'$dnf check-update' failed with exit code $rc" ;;
+    esac
+    return 0
+  fi
+
+  log "upgrading packages"
+  if ! "${SUDO[@]}" "$dnf" update -y; then
+    die 1 "'$dnf update' failed"
+  fi
+
+  # needs-restarting ships in dnf-utils and is not always installed.
+  if have needs-restarting; then
+    "${SUDO[@]}" needs-restarting -r >/dev/null 2>&1 || log "a reboot is required"
+  fi
+  return 0
+}
+
+# Prefer what is actually installed over what /etc/os-release claims, so a host
+# with both (rare, but it happens) still picks the manager that owns the system.
+if have dpkg && have apt-get; then
+  update_deb
+elif have rpm && { have dnf || have yum; }; then
+  update_rpm
+elif have dpkg; then
+  update_deb
+elif have rpm; then
+  update_rpm
+else
+  distro=$( . /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-unknown}" )
+  die 3 "no deb or rpm package manager found (this host looks like: $distro)"
+fi
+
+log "done"
