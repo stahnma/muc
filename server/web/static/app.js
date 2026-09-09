@@ -984,20 +984,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // Ask a host to install its pending updates. The response only says the host
     // took the job; the run itself reports back over NATS and reaches this page
     // as an ordinary system update, which re-renders the panel.
+    //
+    // No confirmation dialog: reaching this button already takes expanding the
+    // host's row and clicking a control that says what it does, so a second
+    // "are you sure?" only trains people to dismiss it.
     function handleRunUpdate(event) {
         const button = event.currentTarget;
         const hostname = button.dataset.hostname;
         if (!hostname) {
             console.error("No hostname found for update button");
-            return;
-        }
-
-        const confirmed = confirm(
-            `Install all pending updates on "${hostname}"?\n\n` +
-            `The host runs its update command as root. Services may restart, ` +
-            `and the run can take several minutes.`
-        );
-        if (!confirmed) {
             return;
         }
 

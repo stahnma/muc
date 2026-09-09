@@ -423,8 +423,8 @@ func main() {
 		return true
 	}
 
-	// SIGUSR1 and a finished update run both mean "re-check now"; the loop
-	// below treats them identically.
+	// A finished update run asks the loop below to check in again. That is not
+	// the same request SIGUSR1 makes: see the two cases in the loop.
 	recheckAfterUpdate := make(chan struct{}, 1)
 
 	// Remote updates are off unless this host opted in, and stay off if it
@@ -465,27 +465,8 @@ func main() {
 
 	// One transaction writes the package database many times, so coalesce a
 	// burst of signals into a single check once things settle.
-	settle := time.NewTimer(0)
-	if !settle.Stop() {
-		<-settle.C
-	}
-	defer settle.Stop()
-
-	// requestRecheck restarts the settle timer, coalescing a burst of requests
-	// into a single check once the package transaction behind them finishes.
-	requestRecheck := func() {
-		slog.Debug("Re-check requested; waiting for package transaction to settle",
-			"settle", recheckSettleDelay)
-		if !settle.Stop() {
-			// Drain only if the timer had already fired and nothing has
-			// consumed it yet; a stopped-but-unfired timer has nothing to drain.
-			select {
-			case <-settle.C:
-			default:
-			}
-		}
-		settle.Reset(recheckSettleDelay)
-	}
+	settle := newSettleTimer()
+	defer settle.disarm()
 
 	for {
 		select {
@@ -496,10 +477,26 @@ func main() {
 		case <-healthTicker.C:
 			checkConnection()
 		case <-recheck:
-			requestRecheck()
+			// Someone else's transaction: it may still be in flight, so wait
+			// for the writes behind the signal to stop before looking.
+			slog.Debug("Re-check requested; waiting for package transaction to settle",
+				"settle", recheckSettleDelay)
+			settle.arm(recheckSettleDelay)
 		case <-recheckAfterUpdate:
-			requestRecheck()
-		case <-settle.C:
+			// Our own transaction, and the update command has already exited —
+			// there is nothing left to settle. Checking in now is what stops
+			// the dashboard from listing the packages this run just installed
+			// as still pending.
+			//
+			// The run wrote the package database too, so the path unit has
+			// probably armed the timer above; drop that, because this check
+			// answers it.
+			slog.Info("Update run finished; re-checking for updates now")
+			settle.disarm()
+			if checkConnection() {
+				sendSystemUpdate(nc, remoteUpdates)
+			}
+		case <-settle.C():
 			slog.Info("Package transaction detected; re-checking for updates")
 			if checkConnection() {
 				sendSystemUpdate(nc, remoteUpdates)

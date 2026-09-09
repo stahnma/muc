@@ -397,9 +397,11 @@ separately, so the dashboard shows progress as it goes: **⏳ Update running**
 next to the host's update badge, and in the expanded row a **Command output**
 pane that fills in live as the package manager works. One run at a time per host
 — a second request while one is in progress is refused with "an update is
-already running on this host". When the run finishes the client re-checks for
-updates, so the pending list catches up within a minute without waiting out the
-poll interval.
+already running on this host". When the run finishes the client immediately
+re-reads the package manager and checks in again — the update command has
+already exited, so there is nothing to wait for — and the host's badge drops to
+**Up to date** as soon as that check completes, rather than still listing the
+packages that were just installed until the next poll.
 
 ### Where the update actually runs
 
