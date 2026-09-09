@@ -9,6 +9,14 @@ import (
 type ClientConfig struct {
 	NATSURL  string
 	NATSPort string
+	// AllowRemoteUpdates is the opt-in for "run updates from the dashboard".
+	// It lives here, on the host that would be patched, rather than only on the
+	// server: a client that has not opted in never subscribes to the command
+	// subject, so no server configuration can make it install anything.
+	AllowRemoteUpdates bool
+	// UpdateCommand overrides the update script to run. Empty means "find the
+	// packaged upd script"; see resolveUpdateCommand.
+	UpdateCommand string
 }
 
 func LoadClientConfig() ClientConfig {
@@ -20,6 +28,8 @@ func loadClientConfigFromPaths(paths []string) ClientConfig {
 
 	v.SetDefault("nats_url", "")
 	v.SetDefault("nats_port", "4222")
+	v.SetDefault("allow_remote_updates", false)
+	v.SetDefault("update_command", "")
 
 	v.SetConfigName("client")
 	v.SetConfigType("yaml")
@@ -39,7 +49,9 @@ func loadClientConfigFromPaths(paths []string) ClientConfig {
 	v.AutomaticEnv()
 
 	return ClientConfig{
-		NATSURL:  v.GetString("nats_url"),
-		NATSPort: v.GetString("nats_port"),
+		NATSURL:            v.GetString("nats_url"),
+		NATSPort:           v.GetString("nats_port"),
+		AllowRemoteUpdates: v.GetBool("allow_remote_updates"),
+		UpdateCommand:      v.GetString("update_command"),
 	}
 }

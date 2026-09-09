@@ -1,5 +1,13 @@
 package models
 
+import "errors"
+
+// ErrHostNotListening is returned when an update request reaches nobody: the
+// host is offline, or its client has not opted into remote updates. It lives
+// here so the transport and the HTTP layer can agree on it without one
+// importing the other.
+var ErrHostNotListening = errors.New("host is not listening for update commands")
+
 type System struct {
 	Hostname            string   `json:"hostname"`
 	Architecture        string   `json:"architecture"`
@@ -29,6 +37,44 @@ type System struct {
 	// Tailscale is nil until a host reports tailnet membership, and stays
 	// non-nil afterwards — see MergeTailscale.
 	Tailscale *Tailscale `json:"tailscale,omitempty"`
+	// RemoteUpdatesEnabled is reported by the client: it says the host opted
+	// into being patched from the dashboard and has an update command to run.
+	// The server offers the button only where this and its own remote_updates
+	// setting agree.
+	RemoteUpdatesEnabled bool `json:"remote_updates_enabled"`
+	// LastUpdateRun is the most recent dashboard-triggered update run, or nil
+	// where none has happened. It arrives on its own subject rather than in the
+	// check-in, so the subscriber carries it across check-ins.
+	LastUpdateRun *UpdateRun `json:"last_update_run,omitempty"`
+}
+
+// UpdateRun records one dashboard-triggered update run on a host. The client
+// publishes it twice — once when the run starts and once when it ends — and its
+// JSON must stay in step with the client's updateRun.
+type UpdateRun struct {
+	ID     string `json:"id"`
+	Status string `json:"status"` // running, succeeded, or failed
+	// RequestedBy is the address the dashboard request came from, so the
+	// journal and the UI can say who asked.
+	RequestedBy string `json:"requested_by,omitempty"`
+	Command     string `json:"command,omitempty"`
+	StartedAt   string `json:"started_at"`
+	FinishedAt  string `json:"finished_at,omitempty"`
+	ExitCode    int    `json:"exit_code"`
+	Error       string `json:"error,omitempty"`
+	// Output is the tail of the command's combined output — enough to see what
+	// went wrong without carrying a whole upgrade log.
+	Output string `json:"output,omitempty"`
+}
+
+// UpdateAck is a host's immediate answer to an update request: it either took
+// the job or said why not.
+type UpdateAck struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Accepted bool   `json:"accepted"`
+	Reason   string `json:"reason,omitempty"`
+	Command  string `json:"command,omitempty"`
 }
 
 type Update struct {

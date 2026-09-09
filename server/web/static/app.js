@@ -17,6 +17,40 @@ document.addEventListener("DOMContentLoaded", () => {
     const INITIAL_RECONNECT_DELAY = 1000; // 1 second
     let expandedSystems = new Set(); // Track manually expanded systems
 
+    // Optional server capabilities, read from /api/features. Remote updates are
+    // assumed off until the server says otherwise, so a server that does not
+    // offer them never draws a button for them.
+    let features = { remote_updates: false };
+
+    const RUN_UPDATE_LABEL = "\u2b07\ufe0f Run updates now";
+
+    // Live output of update runs, keyed by hostname: {id, seq, text}. It is
+    // held here rather than re-read from the server because the table re-renders
+    // on every check-in, and a pane rebuilt from scratch mid-run would flicker
+    // back to whatever the last saved record said.
+    const liveOutput = new Map();
+
+    // Per-host state of the output pane: whether it is open, and where the reader
+    // is in it. The table rebuilds itself on every check-in, so without this a
+    // pane being read closes and jumps the moment anything else happens.
+    const outputViewState = new Map();
+
+    // The last full system payload seen on the WebSocket, which carries
+    // everything the expanded row needs. Rendering from it avoids refetching —
+    // and flashing "Loading…" over a pane someone is reading — every time a
+    // check-in arrives.
+    const detailPayloads = new Map();
+
+    // What one host's pane keeps in the browser. Generous — this is a string in
+    // memory, and scrolling back through a long upgrade is the point.
+    const LIVE_OUTPUT_LIMIT = 512 * 1024;
+
+    // A run whose client restarted mid-transaction never reports a result — the
+    // package transaction survives in its own systemd unit, but the process that
+    // was waiting on it is gone. After this long, stop believing a "running"
+    // record and let the operator try again.
+    const RUN_ABANDONED_MS = 45 * 60 * 1000;
+
     // Escape text for either element content or a double-quoted attribute value.
     // textContent/innerHTML alone does not touch quotes, which is fine in
     // content but lets a value carrying one break out of an attribute — and a
@@ -78,13 +112,26 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     
                     const update = JSON.parse(event.data);
-                    
+
+                    // The socket carries two kinds of message. Live output is
+                    // appended straight into the open pane: re-rendering the
+                    // table for every line of a running upgrade would reload
+                    // every expanded row several times a second.
+                    if (update && update.type === "update_output") {
+                        handleOutputChunk(update);
+                        return;
+                    }
+
                     // Validate that update has required fields
                     if (!update || !update.hostname) {
                         console.warn("Invalid WebSocket update received, missing hostname");
                         return;
                     }
                     
+                    // Keep the payload: the expanded row renders from it rather
+                    // than fetching the same thing again a millisecond later.
+                    detailPayloads.set(update.hostname, { data: update, at: Date.now() });
+
                     // Update the systemsData array
                     const index = systemsData.findIndex(s => s && s.hostname === update.hostname);
                     if (index !== -1) {
@@ -201,6 +248,24 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener('beforeunload', () => {
         clearWebSocket();
     });
+
+    // Ask the server which optional capabilities it offers. A failure here is
+    // not fatal: the dashboard simply renders without the controls it gates.
+    function fetchFeatures() {
+        return fetch("/api/features")
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch features: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then((data) => {
+                features = Object.assign({ remote_updates: false }, data || {});
+            })
+            .catch((error) => {
+                console.warn("Could not read server features; assuming none:", error);
+            });
+    }
 
     // Fetch and render systems list
     function fetchSystems() {
@@ -699,7 +764,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                 ${system.pending_updates && getUpdatePriority(system.pending_updates) === 'high' ? ' ⚠️' : ''}
                             </span>${badgeNote}` :
                             `<span class="update-badge up-to-date">Up to date</span>${badgeNote}`
-                        }</td>
+                        }${runningIndicator(system)}</td>
                         <td>${escapeHtml(formatUptime(system.uptime_seconds))}</td>
                         <td class="last-seen-cell" data-timestamp="${escapeHtml(system.last_seen || '')}" data-tooltip-align="right" data-tooltip="${escapeHtml(formatFullTimestamp(system.last_seen || ''))}">
                             ${isStale ? tooltipIcon('⚠️ ', 'stale-indicator', STALE_CHECKIN_TOOLTIP, 'right') : ''}
@@ -754,6 +819,206 @@ document.addEventListener("DOMContentLoaded", () => {
         const then = new Date(isoTimestamp);
         const diffMs = now - then;
         return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    }
+
+    // An update run is only believed to be in progress for as long as a run
+    // plausibly takes; see RUN_ABANDONED_MS.
+    function isRunActive(run) {
+        if (!run || run.status !== "running") return false;
+        const started = Date.parse(run.started_at || "");
+        if (isNaN(started)) return true;
+        return Date.now() - started < RUN_ABANDONED_MS;
+    }
+
+    // A small indicator in the table so a run in progress is visible without
+    // expanding the row.
+    function runningIndicator(system) {
+        if (!isRunActive(system && system.last_update_run)) return '';
+        return ' ' + tooltipIcon('\u23f3', 'update-running-indicator', 'An update is running on this host', 'right');
+    }
+
+    // Append one streamed chunk to a host's buffer, and to its open pane if the
+    // row happens to be expanded. Chunks are numbered so a drop — the server
+    // sheds them rather than queueing without limit — shows as a gap instead of
+    // silently splicing two unrelated moments together.
+    function handleOutputChunk(message) {
+        const hostname = message.hostname;
+        if (!hostname) return;
+
+        let state = liveOutput.get(hostname);
+        if (!state || state.id !== message.id) {
+            state = { id: message.id, seq: 0, text: "" };
+            liveOutput.set(hostname, state);
+        }
+
+        let text = message.chunk || "";
+        if (state.seq && message.seq !== state.seq + 1) {
+            text = "\n[\u2026 some live output was dropped \u2026]\n" + text;
+        }
+        state.seq = message.seq;
+        state.text += text;
+        if (state.text.length > LIVE_OUTPUT_LIMIT) {
+            state.text = "[earlier output truncated]\n" +
+                state.text.slice(state.text.length - LIVE_OUTPUT_LIMIT);
+        }
+
+        appendToOutputPane(hostname, text);
+    }
+
+    // Write into the pane in place. Scrolling follows the output only when the
+    // reader is already at the bottom, so scrolling back to read something does
+    // not fight the stream.
+    function appendToOutputPane(hostname, text) {
+        const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
+        if (!detailsRow || detailsRow.style.display === "none") return;
+
+        const pre = detailsRow.querySelector('.update-run-output pre');
+        if (!pre) return;
+
+        const placeholder = pre.querySelector('.update-run-waiting');
+        if (placeholder) placeholder.remove();
+
+        const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+        pre.appendChild(document.createTextNode(text));
+        if (atBottom) {
+            pre.scrollTop = pre.scrollHeight;
+        }
+    }
+
+    // Seed the pane for a run that started before this page was looking. Without
+    // it, opening a row (or reloading) mid-run shows an empty pane until the
+    // next chunk happens to arrive, which reads as "nothing is happening".
+    function seedLiveOutput(hostname, run) {
+        if (!run || !isRunActive(run)) return;
+        const state = liveOutput.get(hostname);
+        if (state && state.id === run.id) return;
+
+        fetch(`/api/systems/${encodeURIComponent(hostname)}/update/output`)
+            .then((response) => (response.ok ? response.json() : null))
+            .then((snapshot) => {
+                if (!snapshot || snapshot.id !== run.id) return;
+                // A chunk may have landed while this was in flight; the seeded
+                // history is only useful if it is still the older half.
+                const current = liveOutput.get(hostname);
+                if (current && current.id === run.id) return;
+
+                liveOutput.set(hostname, {
+                    id: snapshot.id,
+                    seq: snapshot.seq,
+                    text: (snapshot.truncated ? "[earlier output truncated]\n" : "") + (snapshot.output || ""),
+                });
+                const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
+                const pre = detailsRow && detailsRow.querySelector('.update-run-output pre');
+                if (pre) {
+                    pre.textContent = liveOutput.get(hostname).text;
+                    pre.scrollTop = pre.scrollHeight;
+                }
+            })
+            .catch((error) => {
+                console.debug(`No live output to seed for ${hostname}:`, error);
+            });
+    }
+
+    // What the pane shows: the live buffer while it belongs to this run, and the
+    // saved tail otherwise. The live buffer is the fuller of the two, so a run
+    // watched from the start stays fully readable after it ends.
+    function runOutputText(hostname, run) {
+        const state = liveOutput.get(hostname);
+        if (state && run && state.id === run.id) return state.text;
+        return (run && run.output) || '';
+    }
+
+    // The record of the last dashboard-triggered update run, shown in the
+    // expanded details. The output tail is collapsed: it matters when something
+    // failed and is noise when it did not.
+    function updateRunHTML(hostname, run) {
+        if (!run) return '';
+
+        const active = isRunActive(run);
+        const abandoned = !active && run.status === "running";
+        let heading;
+        if (active) {
+            heading = `\u23f3 Update running &mdash; started ${escapeHtml(formatRelativeTime(run.started_at || ''))}`;
+        } else if (abandoned) {
+            heading = `\u2753 Update result unknown &mdash; started ${escapeHtml(formatRelativeTime(run.started_at || ''))}`;
+        } else if (run.status === "succeeded") {
+            heading = `\u2705 Update succeeded ${escapeHtml(formatRelativeTime(run.finished_at || run.started_at || ''))}`;
+        } else {
+            heading = `\u274c Update failed ${escapeHtml(formatRelativeTime(run.finished_at || run.started_at || ''))}`;
+        }
+
+        const notes = [];
+        if (run.requested_by) notes.push(`requested from ${escapeHtml(run.requested_by)}`);
+        if (run.command) notes.push(`ran <code>${escapeHtml(run.command)}</code>`);
+        if (run.error) notes.push(escapeHtml(run.error));
+        if (abandoned) {
+            notes.push('the client stopped reporting before the run finished \u2014 check the host\u2019s journal');
+        }
+
+        // Open while the run is going — the point of streaming is seeing it —
+        // and on a failure, where the output is the answer. Collapsed after a
+        // success, where it is a few hundred package names. A pane the reader
+        // has already opened or closed keeps their choice, so a run finishing
+        // (or any other host checking in) does not shut it under them.
+        const text = runOutputText(hostname, run);
+        const remembered = outputViewState.get(hostname);
+        const open = remembered && remembered.id === run.id
+            ? remembered.open
+            : active || run.status === "failed";
+        const output = (text || active)
+            ? `<details class="update-run-output"${open ? " open" : ""}>
+                    <summary>Command output${active ? ' <span class="update-run-live">live</span>' : ''}</summary>
+                    <pre>${text
+                        ? escapeHtml(text)
+                        : '<span class="update-run-waiting">waiting for output\u2026</span>'}</pre>
+                </details>`
+            : '';
+
+        return `<div class="update-run update-run-${escapeHtml(active ? 'running' : run.status || 'unknown')}">
+                <h4>${heading}</h4>
+                ${notes.length ? `<p>${notes.join(' \u00b7 ')}</p>` : ''}
+                ${output}
+            </div>`;
+    }
+
+    // Ask a host to install its pending updates. The response only says the host
+    // took the job; the run itself reports back over NATS and reaches this page
+    // as an ordinary system update, which re-renders the panel.
+    function handleRunUpdate(event) {
+        const button = event.currentTarget;
+        const hostname = button.dataset.hostname;
+        if (!hostname) {
+            console.error("No hostname found for update button");
+            return;
+        }
+
+        const confirmed = confirm(
+            `Install all pending updates on "${hostname}"?\n\n` +
+            `The host runs its update command as root. Services may restart, ` +
+            `and the run can take several minutes.`
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Starting\u2026";
+
+        fetch(`/api/systems/${encodeURIComponent(hostname)}/update`, { method: 'POST' })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Update request failed: ${response.status}`);
+                }
+                console.log("Update started", body);
+                button.textContent = "\u23f3 Update running";
+            })
+            .catch((error) => {
+                console.error(`Failed to start update on ${hostname}:`, error);
+                alert(`Could not start the update on ${hostname}:\n\n${error.message}`);
+                button.disabled = false;
+                button.textContent = RUN_UPDATE_LABEL;
+            });
     }
 
     // Handle system deletion
@@ -813,8 +1078,182 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     }
 
+    // Put the reader back where they were after the panel was rebuilt, and keep
+    // track of where that is from here on. A pane pinned to the bottom follows
+    // the stream; one the reader has scrolled up in stays put.
+    function restoreOutputView(hostname, detailsContent, run) {
+        const details = detailsContent.querySelector('.update-run-output');
+        const pre = details && details.querySelector('pre');
+        if (!details || !pre || !run) return;
+
+        const previous = outputViewState.get(hostname);
+        const state = previous && previous.id === run.id
+            ? previous
+            // A new run starts open at the bottom: the point of it is watching.
+            : { id: run.id, open: details.open, scrollTop: 0, pinned: true };
+        state.open = details.open;
+        outputViewState.set(hostname, state);
+
+        if (state.pinned) {
+            pre.scrollTop = pre.scrollHeight;
+        } else {
+            pre.scrollTop = state.scrollTop;
+        }
+
+        details.addEventListener('toggle', () => {
+            state.open = details.open;
+        });
+        pre.addEventListener('scroll', () => {
+            state.scrollTop = pre.scrollTop;
+            state.pinned = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+        });
+    }
+
+    // Render one host's expanded details from a system payload, whether it
+    // came from the API or arrived over the WebSocket.
+    function renderSystemDetails(hostname, detailsContent, data) {
+        let detailsHTML = '';
+        
+        // Prepare the actions footer (placed at the end): the record of
+        // the last update run, then the buttons that act on this host.
+        const isStale = isStaleCheckIn(data.last_seen);
+        const staleDays = getStaleDays(data.last_seen);
+        const runActive = isRunActive(data.last_update_run);
+        // Both sides must have opted in: the server offers the feature,
+        // and the host reports that it is listening for the command.
+        const canRunUpdates = features.remote_updates && data.remote_updates_enabled;
+        const runUpdateButtonHTML = canRunUpdates
+            ? `<button class="run-update-btn" data-hostname="${escapeHtml(hostname)}"${runActive ? ' disabled' : ''}>
+                    ${runActive ? '⏳ Update running' : RUN_UPDATE_LABEL}
+                </button>`
+            : '';
+        const deleteButtonHTML = `
+            ${updateRunHTML(hostname, data.last_update_run)}
+            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); text-align: right;">
+                ${isStale && staleDays >= 7 ? 
+                    '<span style="margin-right: 12px; color: var(--accent-orange); font-size: 13px; font-weight: 500;">⚠️ This system has not checked in for ' + staleDays + ' days</span>' : 
+                    ''}
+                ${runUpdateButtonHTML}
+                <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">
+                    🗑️ Delete System
+                </button>
+            </div>
+        `;
+        
+        // System information block shown in the expanded per-host details.
+        // Uptime and reboot status live in the main table; the deeper
+        // hardware facts live here.
+        const infoRows = [
+            ['Client version', data.client_version ? escapeHtml(data.client_version) : ''],
+            ['CPU', data.cpu_model ? escapeHtml(data.cpu_model) : ''],
+            ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
+            ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
+            ['Tailnet', tailnetDetail(data)],
+            // updates_checked_at deliberately has no row here. Two
+            // timestamps for "when did we last hear about this host"
+            // only invite the reader to notice they disagree; Last Seen
+            // in the table is the single place that answers it. The
+            // check time still drives the ⚠ next to the update badge
+            // when the data behind it has gone stale.
+        ].filter(([, value]) => value !== '');
+
+        // Surface an incomplete check explicitly: the pending list below
+        // is a lower bound, not an answer, when a repository was skipped.
+        const warnings = data.update_check_warnings || [];
+        const warningsHTML = warnings.length
+            ? `<div class="update-check-warnings">
+                <h4>⚠ Update check was incomplete</h4>
+                <ul>${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+            </div>`
+            : '';
+        const systemInfoHTML = infoRows.length
+            ? `<div class="system-info">
+                <h4>System information</h4>
+                <dl>
+                    ${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
+                </dl>
+            </div>`
+            : '';
+
+        if (data.pending_updates && data.pending_updates.length > 0) {
+            const updatesList = data.pending_updates
+                .map(
+                    (update) =>
+                        `<tr>
+                            <td>${escapeHtml(update.name)}</td>
+                            <td>${escapeHtml(update.version || "N/A")}</td>
+                            <td>${escapeHtml(update.source)}</td>
+                        </tr>`
+                )
+                .join("");
+            detailsHTML = `
+                <h3>Pending Updates for ${escapeHtml(data.hostname)}</h3>
+                ${systemInfoHTML}
+                ${warningsHTML}
+                <table class="updates-table">
+                    <thead>
+                        <tr>
+                            <th>Package</th>
+                            <th>Version</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${updatesList}
+                    </tbody>
+                </table>
+                ${deleteButtonHTML}
+            `;
+        } else if (data.update_status_unknown) {
+            detailsHTML = `
+                <h3>Update status unknown for ${escapeHtml(data.hostname)}</h3>
+                ${systemInfoHTML}
+                ${warningsHTML}
+                <p>${warnings.length
+                    ? 'The update check ran but could not see everything, so an empty result cannot be trusted as "up to date".'
+                    : 'No supported package manager was detected, or its update check failed to run. The update status cannot be determined.'}</p>
+                ${deleteButtonHTML}
+            `;
+        } else {
+            detailsHTML = `
+                <h3>No pending updates for ${escapeHtml(data.hostname)}</h3>
+                ${systemInfoHTML}
+                ${warningsHTML}
+                ${deleteButtonHTML}
+            `;
+        }
+        
+        detailsContent.innerHTML = detailsHTML;
+        detailsContent.dataset.loaded = "true";
+        detailsContent.dataset.loadedTime = Date.now();
+        
+        // Attach delete button event listener
+        const deleteBtn = detailsContent.querySelector('.delete-system-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', handleDeleteSystem);
+        }
+
+        // Attach run-update button event listener
+        const runUpdateBtn = detailsContent.querySelector('.run-update-btn');
+        if (runUpdateBtn) {
+            runUpdateBtn.addEventListener('click', handleRunUpdate);
+        }
+
+        restoreOutputView(hostname, detailsContent, data.last_update_run);
+        seedLiveOutput(hostname, data.last_update_run);
+    }
+
     // Function to load system details
     function loadSystemDetails(hostname, detailsContent) {
+        // The WebSocket payload that prompted this re-render carries the same
+        // fields the API would return, so render from it rather than blanking
+        // the panel to "Loading…" and asking for it again.
+        const cached = detailPayloads.get(hostname);
+        if (cached && Date.now() - cached.at < 5000) {
+            renderSystemDetails(hostname, detailsContent, cached.data);
+            return;
+        }
+
         fetch(`/api/systems/${encodeURIComponent(hostname)}`)
             .then((response) => {
                 if (!response.ok) {
@@ -823,114 +1262,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 return response.json();
             })
             .then((data) => {
-                let detailsHTML = '';
-                
-                // Prepare delete button HTML (will be placed at the end)
-                const isStale = isStaleCheckIn(data.last_seen);
-                const staleDays = getStaleDays(data.last_seen);
-                const deleteButtonHTML = `
-                    <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); text-align: right;">
-                        ${isStale && staleDays >= 7 ? 
-                            '<span style="margin-right: 12px; color: var(--accent-orange); font-size: 13px; font-weight: 500;">⚠️ This system has not checked in for ' + staleDays + ' days</span>' : 
-                            ''}
-                        <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">
-                            🗑️ Delete System
-                        </button>
-                    </div>
-                `;
-                
-                // System information block shown in the expanded per-host details.
-                // Uptime and reboot status live in the main table; the deeper
-                // hardware facts live here.
-                const infoRows = [
-                    ['Client version', data.client_version ? escapeHtml(data.client_version) : ''],
-                    ['CPU', data.cpu_model ? escapeHtml(data.cpu_model) : ''],
-                    ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
-                    ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
-                    ['Tailnet', tailnetDetail(data)],
-                    // updates_checked_at deliberately has no row here. Two
-                    // timestamps for "when did we last hear about this host"
-                    // only invite the reader to notice they disagree; Last Seen
-                    // in the table is the single place that answers it. The
-                    // check time still drives the ⚠ next to the update badge
-                    // when the data behind it has gone stale.
-                ].filter(([, value]) => value !== '');
-
-                // Surface an incomplete check explicitly: the pending list below
-                // is a lower bound, not an answer, when a repository was skipped.
-                const warnings = data.update_check_warnings || [];
-                const warningsHTML = warnings.length
-                    ? `<div class="update-check-warnings">
-                        <h4>⚠ Update check was incomplete</h4>
-                        <ul>${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
-                    </div>`
-                    : '';
-                const systemInfoHTML = infoRows.length
-                    ? `<div class="system-info">
-                        <h4>System information</h4>
-                        <dl>
-                            ${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
-                        </dl>
-                    </div>`
-                    : '';
-
-                if (data.pending_updates && data.pending_updates.length > 0) {
-                    const updatesList = data.pending_updates
-                        .map(
-                            (update) =>
-                                `<tr>
-                                    <td>${escapeHtml(update.name)}</td>
-                                    <td>${escapeHtml(update.version || "N/A")}</td>
-                                    <td>${escapeHtml(update.source)}</td>
-                                </tr>`
-                        )
-                        .join("");
-                    detailsHTML = `
-                        <h3>Pending Updates for ${escapeHtml(data.hostname)}</h3>
-                        ${systemInfoHTML}
-                        ${warningsHTML}
-                        <table class="updates-table">
-                            <thead>
-                                <tr>
-                                    <th>Package</th>
-                                    <th>Version</th>
-                                    <th>Source</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${updatesList}
-                            </tbody>
-                        </table>
-                        ${deleteButtonHTML}
-                    `;
-                } else if (data.update_status_unknown) {
-                    detailsHTML = `
-                        <h3>Update status unknown for ${escapeHtml(data.hostname)}</h3>
-                        ${systemInfoHTML}
-                        ${warningsHTML}
-                        <p>${warnings.length
-                            ? 'The update check ran but could not see everything, so an empty result cannot be trusted as "up to date".'
-                            : 'No supported package manager was detected, or its update check failed to run. The update status cannot be determined.'}</p>
-                        ${deleteButtonHTML}
-                    `;
-                } else {
-                    detailsHTML = `
-                        <h3>No pending updates for ${escapeHtml(data.hostname)}</h3>
-                        ${systemInfoHTML}
-                        ${warningsHTML}
-                        ${deleteButtonHTML}
-                    `;
-                }
-                
-                detailsContent.innerHTML = detailsHTML;
-                detailsContent.dataset.loaded = "true";
-                detailsContent.dataset.loadedTime = Date.now();
-                
-                // Attach delete button event listener
-                const deleteBtn = detailsContent.querySelector('.delete-system-btn');
-                if (deleteBtn) {
-                    deleteBtn.addEventListener('click', handleDeleteSystem);
-                }
+                renderSystemDetails(hostname, detailsContent, data);
             })
             .catch((error) => {
                 console.error(`Failed to fetch system details for ${hostname}:`, error);
@@ -1030,8 +1362,10 @@ document.addEventListener("DOMContentLoaded", () => {
         collapseAllBtn.addEventListener("click", collapseAll);
     }
 
-    // Initial fetch and WebSocket connection
-    fetchSystems();
+    // Initial fetch and WebSocket connection. Features first, so the first
+    // render of an expanded row already knows whether to offer the update
+    // button; the fetch is not allowed to hold up the systems list for long.
+    fetchFeatures().finally(fetchSystems);
     initWebSocket();
     
     // Set up periodic update of relative timestamps (every 30 seconds)

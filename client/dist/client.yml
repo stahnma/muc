@@ -6,3 +6,20 @@
 
 # NATS port (used with DNS discovery if nats_url is not set)
 # nats_port: 4222
+
+# Remote updates (off by default)
+#
+# When true, this host listens for "install your pending updates" commands from
+# the dashboard and runs its update script as root. The opt-in lives here, on
+# the host that would be patched: a client that has not set this never
+# subscribes to the command subject, so no server setting can patch it.
+#
+# The server must also be configured with remote_updates: true for the button to
+# appear. Note that NATS here is unauthenticated, so this trusts everything that
+# can reach the NATS port - enable it on a network where that is acceptable.
+# allow_remote_updates: true
+
+# The command run to install updates. Defaults to the packaged
+# /usr/libexec/muc/upd, falling back to /usr/local/bin/upd, /usr/bin/upd, then
+# 'upd' on PATH. Set this to use a different script.
+# update_command: /usr/local/bin/upd

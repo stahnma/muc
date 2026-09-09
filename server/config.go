@@ -17,6 +17,12 @@ type Config struct {
 	ConsulURL      string
 	ConsulTags     []string
 	ConsulNATSTags []string
+	// RemoteUpdates lets the dashboard ask hosts to install their pending
+	// packages. Off by default: a default install must not be able to patch
+	// anything. Hosts opt in separately (allow_remote_updates in their client
+	// config), and a host that has not opted in cannot be patched however this
+	// is set.
+	RemoteUpdates bool
 }
 
 func LoadConfig() Config {
@@ -34,6 +40,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 	v.SetDefault("consul_url", "http://localhost:8500")
 	v.SetDefault("consul_tags", "")
 	v.SetDefault("consul_nats_tags", "")
+	v.SetDefault("remote_updates", false)
 
 	// Read from config.yml if present
 	v.SetConfigName("config")
@@ -82,6 +89,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 		ConsulURL:      v.GetString("consul_url"),
 		ConsulTags:     consulTags,
 		ConsulNATSTags: consulNATSTags,
+		RemoteUpdates:  v.GetBool("remote_updates"),
 	}
 
 	slog.Info("Loaded configuration",
@@ -92,6 +100,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 		"consul_url", config.ConsulURL,
 		"consul_tags", config.ConsulTags,
 		"consul_nats_tags", config.ConsulNATSTags,
+		"remote_updates", config.RemoteUpdates,
 	)
 	return config
 }

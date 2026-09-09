@@ -52,6 +52,15 @@ func TestClientSystemdUnit(t *testing.T) {
 	assertContains(t, content, "ExecReload=", "missing ExecReload; muc-client-recheck.service cannot trigger a re-check")
 	assertContains(t, content, "USR1", "ExecReload must send SIGUSR1, which the client handles as 're-check now'")
 
+	// Updates the client runs itself (rather than through a transient unit, which
+	// needs systemd) are its children, in this unit's control group. Under the
+	// default KillMode=control-group, a transaction that upgrades muc-client
+	// restarts the unit and kills the package manager partway through — measured:
+	// a forked child dies on restart even in its own session, since setsid does
+	// not escape the cgroup.
+	assertContains(t, content, "KillMode=process",
+		"client unit must not kill its children on restart: a self-upgrading transaction would take the package manager with it")
+
 	// The client asks the system package manager what is pending, and every
 	// packaged target needs root for a trustworthy answer: apt and zypper cannot
 	// refresh metadata otherwise, and dnf/yum would answer from a per-user cache
@@ -160,6 +169,13 @@ func TestClientRecheckUnits(t *testing.T) {
 	// Without Requisite= the path unit starts a failing job on every package
 	// transaction when the client is not running.
 	assertContains(t, svcUnit, "Requisite=muc-client.service", "missing Requisite guard on muc-client.service")
+
+	// Without this, systemd's default start limit (5 starts in 10s) is hit
+	// during any sizeable transaction — the path unit fires per write to the
+	// package database — and both units latch into a failed state that survives
+	// until someone resets them. The re-check feature then stays dead.
+	assertContains(t, svcUnit, "StartLimitIntervalSec=0",
+		"recheck service must disable the start limit; a package transaction triggers it faster than the default allows")
 }
 
 func TestShellScripts(t *testing.T) {
@@ -173,7 +189,7 @@ func TestShellScripts(t *testing.T) {
 		// The client package intentionally creates no user; see
 		// TestClientPreinstallCreatesNoUser.
 		{"client/dist/preinstall.sh", nil},
-		{"client/dist/postinstall.sh", []string{"daemon-reload", "muc-client-recheck.path"}},
+		{"client/dist/postinstall.sh", []string{"daemon-reload", "muc-client-recheck.path", "reset-failed"}},
 		{"client/dist/preremove.sh", []string{"systemctl stop"}},
 		{"client/dist/postremove.sh", []string{"muc-client-recheck.path"}},
 	}
@@ -225,4 +241,48 @@ func TestConfigFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestUpdateScriptIsShipped covers the script the remote-update feature runs.
+//
+// The client resolves /usr/libexec/muc/upd first, so a host that opted into
+// remote updates but never had upd installed by hand still has something to
+// run. The mode matters as much as the path: the client refuses a command that
+// is not executable rather than handing it to a shell.
+func TestUpdateScriptIsShipped(t *testing.T) {
+	content := readFileOrFail(t, "client/scripts/upd")
+	if !strings.HasPrefix(content, "#!") {
+		t.Error("client/scripts/upd has no shebang; the client execs it directly")
+	}
+
+	info, err := os.Stat("client/scripts/upd")
+	if err != nil {
+		t.Fatalf("cannot stat client/scripts/upd: %v", err)
+	}
+	if info.Mode()&0111 == 0 {
+		t.Error("client/scripts/upd is not executable")
+	}
+
+	release := readFileOrFail(t, ".goreleaser.yml")
+	assertContains(t, release, "src: client/scripts/upd",
+		"the client package must ship the update script")
+	assertContains(t, release, "dst: /usr/libexec/muc/upd",
+		"the update script must land where the client looks for it first")
+	assertContains(t, release, "mode: 0755",
+		"the update script must be installed executable")
+}
+
+// TestClientUnitStaysSandboxed records why remote updates run in a transient
+// systemd unit rather than as a child of the client.
+//
+// ProtectSystem=full makes /usr read-only, which a package manager cannot work
+// under, and restarting muc-client.service kills everything in its cgroup —
+// including a dnf transaction that is halfway through upgrading muc-client
+// itself. Relaxing the unit to fix the first problem would leave the second,
+// so the sandbox stays and updateArgv wraps the run in systemd-run.
+func TestClientUnitStaysSandboxed(t *testing.T) {
+	content := readFileOrFail(t, "client/dist/muc-client.service")
+
+	assertContains(t, content, "ProtectSystem=full",
+		"client sandbox must stay: remote updates escape it through systemd-run, not by loosening it")
 }

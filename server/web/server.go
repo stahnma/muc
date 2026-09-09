@@ -10,6 +10,7 @@ import (
 	"os"
 	"server/api"
 	"server/metrics"
+	"server/runlog"
 	"server/storage"
 	"sync"
 	"time"
@@ -139,7 +140,11 @@ func (m *wsConnectionManager) broadcast(update interface{}) {
 	metrics.WebSocketMessagesBroadcast.Inc()
 }
 
-func StartWebServer(store storage.Storage, port string, version string) {
+// StartWebServer serves the dashboard and the API. updater is nil unless the
+// server is configured to allow remote updates; the update route and the
+// /api/features flag both key off it, so there is one thing to get wrong
+// instead of two. runs carries the live output of update runs in flight.
+func StartWebServer(store storage.Storage, port string, version string, updater api.UpdateRequester, runs *runlog.Store) {
 	r := mux.NewRouter()
 	connManager := newWSConnectionManager()
 
@@ -170,6 +175,9 @@ func StartWebServer(store storage.Storage, port string, version string) {
 	r.HandleFunc("/api/systems", api.GetSystemsHandler(store)).Methods("GET")
 	r.HandleFunc("/api/systems/{hostname}", api.GetSystemHandler(store)).Methods("GET")
 	r.HandleFunc("/api/systems/{hostname}", api.DeleteSystemHandler(store)).Methods("DELETE")
+	r.HandleFunc("/api/systems/{hostname}/update", api.RunUpdateHandler(store, updater)).Methods("POST")
+	r.HandleFunc("/api/systems/{hostname}/update/output", api.UpdateOutputHandler(runs)).Methods("GET")
+	r.HandleFunc("/api/features", api.FeaturesHandler(updater)).Methods("GET")
 
 	// API documentation endpoint
 	r.HandleFunc("/apidoc", apiDocsHandler(version))
@@ -280,6 +288,19 @@ func StartWebServer(store storage.Storage, port string, version string) {
 			}
 		}
 		slog.Warn("Updates channel closed, WebSocket broadcast goroutine exiting")
+	}()
+
+	// Relay the live output of update runs. It shares the socket with the
+	// system updates above and is told apart by its "type" field; it
+	// deliberately does not go through storage, so a chatty upgrade does not
+	// write to disk or re-render the whole table on every line.
+	go func() {
+		for chunk := range runs.Events() {
+			if connManager.count() > 0 {
+				connManager.broadcast(chunk)
+			}
+		}
+		slog.Warn("Live output channel closed, WebSocket relay goroutine exiting")
 	}()
 
 	slog.Info("Web server starting", "port", port)

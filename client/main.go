@@ -66,11 +66,20 @@ type System struct {
 	// report, which is what keeps the dashboard silent about tailnets for
 	// fleets that do not use one.
 	Tailscale *hostinfo.TailscaleInfo `json:"tailscale,omitempty"`
+	// RemoteUpdatesEnabled says this host is listening for update commands and
+	// has a command to run. The dashboard offers its update button only for
+	// hosts that report it, so a fleet where nothing has opted in shows no
+	// buttons at all.
+	RemoteUpdatesEnabled bool `json:"remote_updates_enabled"`
 }
 
-// Collects all system data to prepare for publishing
-func collectSystemData() (System, error) {
+// Collects all system data to prepare for publishing. remoteUpdates says
+// whether this client is actually listening for update commands, which is not
+// simply the config flag: a host that opted in but has no update script to run
+// must not advertise the capability.
+func collectSystemData(remoteUpdates bool) (System, error) {
 	var system System
+	system.RemoteUpdatesEnabled = remoteUpdates
 
 	// Hostname
 	hostname, err := os.Hostname()
@@ -157,7 +166,7 @@ func collectSystemData() (System, error) {
 }
 
 // Publishes system data to NATS
-func sendSystemUpdate(nc *nats.Conn) {
+func sendSystemUpdate(nc *nats.Conn, remoteUpdates bool) {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()
@@ -165,7 +174,7 @@ func sendSystemUpdate(nc *nats.Conn) {
 	}()
 
 	// Collect system data
-	system, err := collectSystemData()
+	system, err := collectSystemData(remoteUpdates)
 	if err != nil {
 		slog.Error("Failed to collect system data", "error", err)
 		return
@@ -414,9 +423,28 @@ func main() {
 		return true
 	}
 
+	// SIGUSR1 and a finished update run both mean "re-check now"; the loop
+	// below treats them identically.
+	recheckAfterUpdate := make(chan struct{}, 1)
+
+	// Remote updates are off unless this host opted in, and stay off if it
+	// opted in without a usable update command — advertising the capability
+	// then would put a button on the dashboard that could only ever fail.
+	remoteUpdates := false
+	if cfg.AllowRemoteUpdates {
+		hostname, hostErr := os.Hostname()
+		if hostErr != nil {
+			slog.Error("Remote updates requested but the hostname is unknown; not listening", "error", hostErr)
+		} else if err := startUpdateListener(nc, hostname, cfg, recheckAfterUpdate); err != nil {
+			slog.Error("Remote updates requested but cannot be served", "error", err)
+		} else {
+			remoteUpdates = true
+		}
+	}
+
 	// Send the first update immediately
 	if checkConnection() {
-		sendSystemUpdate(nc)
+		sendSystemUpdate(nc, remoteUpdates)
 	}
 
 	// Run the client as a long-running daemon
@@ -443,30 +471,38 @@ func main() {
 	}
 	defer settle.Stop()
 
+	// requestRecheck restarts the settle timer, coalescing a burst of requests
+	// into a single check once the package transaction behind them finishes.
+	requestRecheck := func() {
+		slog.Debug("Re-check requested; waiting for package transaction to settle",
+			"settle", recheckSettleDelay)
+		if !settle.Stop() {
+			// Drain only if the timer had already fired and nothing has
+			// consumed it yet; a stopped-but-unfired timer has nothing to drain.
+			select {
+			case <-settle.C:
+			default:
+			}
+		}
+		settle.Reset(recheckSettleDelay)
+	}
+
 	for {
 		select {
 		case <-ticker.C:
 			if checkConnection() {
-				sendSystemUpdate(nc)
+				sendSystemUpdate(nc, remoteUpdates)
 			}
 		case <-healthTicker.C:
 			checkConnection()
 		case <-recheck:
-			slog.Debug("Re-check requested; waiting for package transaction to settle",
-				"settle", recheckSettleDelay)
-			if !settle.Stop() {
-				// Drain only if the timer had already fired and nothing has
-				// consumed it yet; a stopped-but-unfired timer has nothing to drain.
-				select {
-				case <-settle.C:
-				default:
-				}
-			}
-			settle.Reset(recheckSettleDelay)
+			requestRecheck()
+		case <-recheckAfterUpdate:
+			requestRecheck()
 		case <-settle.C:
 			slog.Info("Package transaction detected; re-checking for updates")
 			if checkConnection() {
-				sendSystemUpdate(nc)
+				sendSystemUpdate(nc, remoteUpdates)
 			}
 		}
 	}

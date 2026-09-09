@@ -42,3 +42,43 @@ func TestLoadClientConfig_EnvOverridesFile(t *testing.T) {
 		t.Errorf("NATSURL = %q, want %q", cfg.NATSURL, "nats://env:4222")
 	}
 }
+
+// TestLoadClientConfig_RemoteUpdatesDefaultOff pins the opt-in: a client with no
+// configuration must never accept an update command, whatever the server offers.
+func TestLoadClientConfig_RemoteUpdatesDefaultOff(t *testing.T) {
+	cfg := loadClientConfigFromPaths([]string{t.TempDir()})
+
+	if cfg.AllowRemoteUpdates {
+		t.Error("AllowRemoteUpdates = true by default; remote updates must be opt-in")
+	}
+	if cfg.UpdateCommand != "" {
+		t.Errorf("UpdateCommand = %q, want empty (auto-detect)", cfg.UpdateCommand)
+	}
+}
+
+func TestLoadClientConfig_RemoteUpdatesFromFile(t *testing.T) {
+	dir := t.TempDir()
+	body := "allow_remote_updates: true\nupdate_command: /usr/local/bin/upd\n"
+	if err := os.WriteFile(filepath.Join(dir, "client.yml"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := loadClientConfigFromPaths([]string{dir})
+
+	if !cfg.AllowRemoteUpdates {
+		t.Error("AllowRemoteUpdates = false, want true from the config file")
+	}
+	if cfg.UpdateCommand != "/usr/local/bin/upd" {
+		t.Errorf("UpdateCommand = %q, want %q", cfg.UpdateCommand, "/usr/local/bin/upd")
+	}
+}
+
+func TestLoadClientConfig_RemoteUpdatesFromEnv(t *testing.T) {
+	t.Setenv("MUC_ALLOW_REMOTE_UPDATES", "true")
+
+	cfg := loadClientConfigFromPaths([]string{t.TempDir()})
+
+	if !cfg.AllowRemoteUpdates {
+		t.Error("AllowRemoteUpdates = false, want true from MUC_ALLOW_REMOTE_UPDATES")
+	}
+}

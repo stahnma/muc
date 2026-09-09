@@ -1,5 +1,17 @@
 [Unit]
 Description=Ask muc-client to re-check for updates now
+# A package transaction writes the rpm database many times a second, so the path
+# unit triggers this far faster than systemd's default start limit allows (5
+# starts in 10s). Hitting that limit does not merely skip a re-check: it puts
+# this unit *and* the path unit that triggers it into a failed state, where they
+# stay until someone resets them — so the first large upgrade on a host silently
+# disables the feature for good. Observed exactly that on a host whose path unit
+# had been dead for ten hours after an overnight dnf run.
+#
+# Rate limiting buys nothing here anyway: this is a oneshot that execs systemctl
+# and exits, and the client coalesces the signals it produces behind a 30s
+# settle timer.
+StartLimitIntervalSec=0
 # Nothing to do if the client is not running; without this the path unit would
 # start a failing job on every package transaction.
 Requisite=muc-client.service

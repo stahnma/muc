@@ -6,7 +6,10 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"server/models"
+	"strings"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
 // fakeStorage is a minimal in-memory Storage for exercising the handlers.
@@ -68,6 +71,18 @@ func fullySetSystem() models.System {
 			State:           "Running",
 			LastTailnet:     "mastahnke@gmail.com",
 			LastConnectedAt: "2026-07-31T23:40:41Z",
+		},
+		RemoteUpdatesEnabled: true,
+		LastUpdateRun: &models.UpdateRun{
+			ID:          "9f2c1b0a4d5e6f70",
+			Status:      "succeeded",
+			RequestedBy: "192.168.1.20",
+			Command:     "/usr/libexec/muc/upd",
+			StartedAt:   "2026-07-31T23:38:02Z",
+			FinishedAt:  "2026-07-31T23:40:38Z",
+			ExitCode:    0,
+			Error:       "",
+			Output:      "upd: done\n",
 		},
 	}
 }
@@ -188,5 +203,151 @@ func TestSystemSummaryCoversFreshnessFields(t *testing.T) {
 		if !summaryFields[want] {
 			t.Errorf("SystemSummary is missing the %q json field", want)
 		}
+	}
+}
+
+// fakeUpdater stands in for the NATS connection in the update-request tests.
+type fakeUpdater struct {
+	ack      models.UpdateAck
+	err      error
+	hostname string // recorded from the last call
+	by       string
+	calls    int
+}
+
+func (f *fakeUpdater) RequestUpdate(hostname, requestedBy string) (models.UpdateAck, error) {
+	f.calls++
+	f.hostname = hostname
+	f.by = requestedBy
+	return f.ack, f.err
+}
+
+func postUpdate(handler http.HandlerFunc, hostname string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/systems/"+hostname+"/update", nil)
+	req = mux.SetURLVars(req, map[string]string{"hostname": hostname})
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	return rec
+}
+
+// TestRunUpdateHandlerDisabled pins the server-side half of the opt-in: with no
+// updater wired in, the route exists but refuses, and nothing is dispatched.
+func TestRunUpdateHandlerDisabled(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+
+	rec := postUpdate(RunUpdateHandler(store, nil), "smallboi")
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rec.Code)
+	}
+}
+
+// TestRunUpdateHandlerHostNotOptedIn is the client-side half: a host that has
+// not opted in is refused before any command goes out, so the dashboard can say
+// why rather than waiting out a request nobody answers.
+func TestRunUpdateHandlerHostNotOptedIn(t *testing.T) {
+	system := fullySetSystem()
+	system.RemoteUpdatesEnabled = false
+	store := &fakeStorage{systems: []models.System{system}}
+	updater := &fakeUpdater{ack: models.UpdateAck{Accepted: true}}
+
+	rec := postUpdate(RunUpdateHandler(store, updater), "smallboi")
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if updater.calls != 0 {
+		t.Errorf("dispatched %d update requests for a host that has not opted in, want 0", updater.calls)
+	}
+}
+
+func TestRunUpdateHandlerUnknownHost(t *testing.T) {
+	store := &fakeStorage{}
+	updater := &fakeUpdater{ack: models.UpdateAck{Accepted: true}}
+
+	rec := postUpdate(RunUpdateHandler(store, updater), "nosuchhost")
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+	if updater.calls != 0 {
+		t.Errorf("dispatched %d update requests for an unknown host, want 0", updater.calls)
+	}
+}
+
+func TestRunUpdateHandlerAccepted(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	updater := &fakeUpdater{ack: models.UpdateAck{ID: "abc123", Accepted: true, Command: "/usr/libexec/muc/upd"}}
+
+	rec := postUpdate(RunUpdateHandler(store, updater), "smallboi")
+
+	// 202, not 200: the run has started, and its result arrives later over NATS.
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if updater.hostname != "smallboi" {
+		t.Errorf("dispatched to %q, want %q", updater.hostname, "smallboi")
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if body["id"] != "abc123" {
+		t.Errorf("id = %q, want %q — the dashboard needs the host's own run id", body["id"], "abc123")
+	}
+}
+
+// TestRunUpdateHandlerRefused covers the host answering "busy": that is a
+// refusal to report, not an error to swallow.
+func TestRunUpdateHandlerRefused(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	updater := &fakeUpdater{ack: models.UpdateAck{Accepted: false, Reason: "an update is already running on this host"}}
+
+	rec := postUpdate(RunUpdateHandler(store, updater), "smallboi")
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "already running") {
+		t.Errorf("body = %q, want the host's own reason", rec.Body.String())
+	}
+}
+
+// TestRunUpdateHandlerNotListening distinguishes "nobody answered" from a
+// server-side failure: the host is simply offline or no longer accepting.
+func TestRunUpdateHandlerNotListening(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	updater := &fakeUpdater{err: models.ErrHostNotListening}
+
+	rec := postUpdate(RunUpdateHandler(store, updater), "smallboi")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
+	}
+}
+
+// TestFeaturesHandler pins what the dashboard reads to decide whether to draw
+// the update button at all.
+func TestFeaturesHandler(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		updater UpdateRequester
+		want    bool
+	}{
+		{"disabled", nil, false},
+		{"enabled", &fakeUpdater{}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			FeaturesHandler(tc.updater)(rec, httptest.NewRequest(http.MethodGet, "/api/features", nil))
+
+			var got map[string]bool
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatalf("decoding response: %v", err)
+			}
+			if got["remote_updates"] != tc.want {
+				t.Errorf("remote_updates = %v, want %v", got["remote_updates"], tc.want)
+			}
+		})
 	}
 }

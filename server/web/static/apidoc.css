@@ -118,6 +118,12 @@ h1 {
     border: 1px solid rgba(63, 185, 80, 0.3);
 }
 
+.method.post {
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--accent-blue);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
 .method.delete {
     background: rgba(248, 81, 73, 0.15);
     color: var(--accent-red);

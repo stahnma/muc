@@ -3,9 +3,12 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"server/models"
+	"server/runlog"
 	"server/storage"
 	"strings"
 
@@ -30,6 +33,18 @@ type SystemSummary struct {
 	UptimeSeconds       uint64            `json:"uptime_seconds"`
 	RebootRequired      bool              `json:"reboot_required"`
 	Tailscale           *models.Tailscale `json:"tailscale,omitempty"`
+	// RemoteUpdatesEnabled is the host's own opt-in, reported at check-in. The
+	// dashboard needs it in the list response so it can decide per row whether
+	// to offer the update button.
+	RemoteUpdatesEnabled bool              `json:"remote_updates_enabled"`
+	LastUpdateRun        *models.UpdateRun `json:"last_update_run,omitempty"`
+}
+
+// UpdateRequester asks one host to install its pending packages, returning the
+// host's own answer. Implemented by the NATS connection; nil when the server is
+// not configured to allow remote updates.
+type UpdateRequester interface {
+	RequestUpdate(hostname, requestedBy string) (models.UpdateAck, error)
 }
 
 // GetSystemsHandler returns a JSON list of systems with pending updates details
@@ -64,6 +79,9 @@ func GetSystemsHandler(store storage.Storage) http.HandlerFunc {
 				UptimeSeconds:       system.UptimeSeconds,
 				RebootRequired:      system.RebootRequired,
 				Tailscale:           system.Tailscale,
+
+				RemoteUpdatesEnabled: system.RemoteUpdatesEnabled,
+				LastUpdateRun:        system.LastUpdateRun,
 			})
 		}
 
@@ -147,5 +165,134 @@ func DeleteSystemHandler(store storage.Storage) http.HandlerFunc {
 			"message":  "System deleted successfully",
 			"hostname": hostname,
 		})
+	}
+}
+
+// FeaturesHandler tells the dashboard which optional capabilities this server
+// offers, so the UI can hide controls that would only ever return an error.
+func FeaturesHandler(updater UpdateRequester) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]bool{
+			"remote_updates": updater != nil,
+		}); err != nil {
+			slog.Error("Failed to write features response", "error", err)
+		}
+	}
+}
+
+// RunUpdateHandler asks a host to install its pending packages.
+//
+// It answers as soon as the host has accepted or refused the job, not when the
+// run finishes: the run reports its own progress back over NATS and reaches the
+// dashboard as an ordinary system update. Both sides must have opted in — the
+// server through remote_updates, the host through allow_remote_updates — and
+// the host's opt-in is the one that actually gates anything, since a client
+// that has not opted in never subscribes to the command subject.
+func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if updater == nil {
+			writeUpdateError(w, http.StatusForbidden,
+				"Remote updates are disabled on this server (set remote_updates: true to enable them)")
+			return
+		}
+
+		vars := mux.Vars(r)
+		hostname := strings.TrimSpace(vars["hostname"])
+		if hostname == "" {
+			writeUpdateError(w, http.StatusBadRequest, "Hostname is required")
+			return
+		}
+
+		system, err := store.GetSystem(hostname)
+		if err != nil {
+			writeUpdateError(w, http.StatusNotFound, "System not found")
+			return
+		}
+		if !system.RemoteUpdatesEnabled {
+			writeUpdateError(w, http.StatusConflict,
+				"This host has not opted into remote updates (set allow_remote_updates: true in its client config)")
+			return
+		}
+
+		ack, err := updater.RequestUpdate(hostname, requesterAddress(r))
+		switch {
+		case errors.Is(err, models.ErrHostNotListening):
+			// The stored opt-in said yes but nothing answered, so the host is
+			// down or its client has since been reconfigured.
+			writeUpdateError(w, http.StatusServiceUnavailable,
+				"No response from "+hostname+": it is offline, or its client is no longer accepting update commands")
+			return
+		case err != nil:
+			slog.Error("Update request failed", "hostname", hostname, "error", err)
+			writeUpdateError(w, http.StatusBadGateway, "Update request failed: "+err.Error())
+			return
+		}
+
+		if !ack.Accepted {
+			reason := ack.Reason
+			if reason == "" {
+				reason = "the host refused the update request"
+			}
+			writeUpdateError(w, http.StatusConflict, reason)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		if err := json.NewEncoder(w).Encode(map[string]string{
+			"status":   "accepted",
+			"hostname": hostname,
+			"id":       ack.ID,
+			"command":  ack.Command,
+			"message":  "Update started on " + hostname,
+		}); err != nil {
+			slog.Error("Failed to write update response", "error", err)
+		}
+	}
+}
+
+// writeUpdateError returns a JSON error, which is what the dashboard's fetch
+// handler reads to show the operator why nothing happened.
+func writeUpdateError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
+		slog.Error("Failed to write error response", "error", err)
+	}
+}
+
+// requesterAddress is recorded with the run so the host's journal and the
+// dashboard can both say where the request came from. It is provenance for a
+// home network, not authentication.
+func requesterAddress(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// UpdateOutputHandler serves the live output of the run on one host, for a
+// viewer that arrived after it started — a page opened or reloaded mid-run
+// would otherwise show an empty pane until the next chunk happened to arrive.
+//
+// This is the output held in memory for the run in flight. What survives a
+// server restart is the tail on the run record, in GET /api/systems/{hostname}.
+func UpdateOutputHandler(runs *runlog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		hostname := strings.TrimSpace(vars["hostname"])
+
+		snapshot, ok := runs.Snapshot(hostname)
+		if !ok {
+			writeUpdateError(w, http.StatusNotFound, "No live output for "+hostname)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+			slog.Error("Failed to write update output response", "error", err)
+		}
 	}
 }
