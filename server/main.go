@@ -66,12 +66,19 @@ func main() {
 	slog.Info("Starting web server...")
 	go web.StartWebServer(store, config.HTTPPort, Version)
 
-	// Register with Consul
-	deregisterConsul, err := consul.Register(config.ConsulURL, config.HTTPPort, config.NATSPort, config.ConsulTags, config.ConsulNATSTags)
-	if err != nil {
-		slog.Warn("Failed to register with Consul, service will run without service discovery", "error", err)
-	} else {
-		defer deregisterConsul()
+	// Register with Consul in the background. Registration retries until it
+	// succeeds and is re-asserted afterward, so a Consul agent that is down at
+	// startup (or restarted with a cleared data dir) delays discovery instead
+	// of leaving the server unroutable for the life of the process.
+	registrar, err := consul.New(config.ConsulURL, config.HTTPPort, config.NATSPort, config.ConsulTags, config.ConsulNATSTags)
+	switch {
+	case err != nil:
+		slog.Error("Consul registration disabled by a configuration error, service will not be discoverable", "error", err)
+	case registrar == nil:
+		slog.Info("No consul_url configured, running without service discovery")
+	default:
+		registrar.Start()
+		defer registrar.Stop()
 	}
 
 	// Start business metrics updater
