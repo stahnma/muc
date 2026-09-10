@@ -273,6 +273,57 @@
 
         <div class="endpoint">
             <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/systems/{hostname}/checkin</span>
+            </div>
+            <div class="description">
+                Asks a host to read its package manager now and publish what it finds, instead of waiting out its
+                poll interval. Returns as soon as the host has accepted: the check-in itself arrives a moment later
+                and reaches the dashboard as an ordinary system update, with a fresh
+                <code>updates_checked_at</code>.
+                <br><br>
+                Unlike <code>/update</code> this is not gated at either end — it installs nothing and republishes only
+                what the client sends every few minutes anyway, so every client listens for it. The one limit is the
+                host's own: it refuses a command that arrives less than 10 seconds after the last one it accepted.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Path Parameters</div>
+                <div class="param">
+                    <div class="param-name">hostname</div>
+                    <div class="param-desc">The hostname of the system to ask for a check-in (required)</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">202 Accepted</span>
+                    <span>The host accepted and is checking in</span>
+                </div>
+                <div class="code-block">{
+  "status": "accepted",
+  "hostname": "server1.example.com",
+  "id": "9f2c1b0a4d5e6f70",
+  "message": "server1.example.com is checking in"
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>System not found</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code notfound">409 Conflict</span>
+                    <span>The host checked in moments ago; the reason says when to try again</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code error">503 Service Unavailable</span>
+                    <span>No response from the host: it is offline, or its client is too old to accept check-in requests</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
                 <span class="method get">GET</span>
                 <span class="path">/api/features</span>
             </div>

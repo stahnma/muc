@@ -222,6 +222,30 @@ func (f *fakeUpdater) RequestUpdate(hostname, requestedBy string) (models.Update
 	return f.ack, f.err
 }
 
+// fakeCheckIner stands in for the NATS connection in the check-in tests.
+type fakeCheckIner struct {
+	ack      models.CheckInAck
+	err      error
+	hostname string // recorded from the last call
+	by       string
+	calls    int
+}
+
+func (f *fakeCheckIner) RequestCheckIn(hostname, requestedBy string) (models.CheckInAck, error) {
+	f.calls++
+	f.hostname = hostname
+	f.by = requestedBy
+	return f.ack, f.err
+}
+
+func postCheckIn(handler http.HandlerFunc, hostname string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/systems/"+hostname+"/checkin", nil)
+	req = mux.SetURLVars(req, map[string]string{"hostname": hostname})
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	return rec
+}
+
 func postUpdate(handler http.HandlerFunc, hostname string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/systems/"+hostname+"/update", nil)
 	req = mux.SetURLVars(req, map[string]string{"hostname": hostname})
@@ -349,5 +373,89 @@ func TestFeaturesHandler(t *testing.T) {
 				t.Errorf("remote_updates = %v, want %v", got["remote_updates"], tc.want)
 			}
 		})
+	}
+}
+
+// TestCheckInHandlerAccepted pins the ungated path: no server flag and no host
+// opt-in is consulted, unlike the update route — any known host can be asked.
+// 202, not 200: the check-in itself arrives later, over NATS.
+func TestCheckInHandlerAccepted(t *testing.T) {
+	system := fullySetSystem()
+	system.RemoteUpdatesEnabled = false // deliberately: it has no bearing here
+	store := &fakeStorage{systems: []models.System{system}}
+	checkiner := &fakeCheckIner{ack: models.CheckInAck{ID: "abc123", Accepted: true}}
+
+	rec := postCheckIn(CheckInHandler(store, checkiner), "smallboi")
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if checkiner.hostname != "smallboi" {
+		t.Errorf("dispatched to %q, want %q", checkiner.hostname, "smallboi")
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if body["id"] != "abc123" {
+		t.Errorf("id = %q, want the host's own request id %q", body["id"], "abc123")
+	}
+}
+
+func TestCheckInHandlerUnknownHost(t *testing.T) {
+	store := &fakeStorage{}
+	checkiner := &fakeCheckIner{ack: models.CheckInAck{Accepted: true}}
+
+	rec := postCheckIn(CheckInHandler(store, checkiner), "nosuchhost")
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+	if checkiner.calls != 0 {
+		t.Errorf("dispatched %d check-in requests for an unknown host, want 0", checkiner.calls)
+	}
+}
+
+// TestCheckInHandlerRefused carries the host's rate-limit refusal through as the
+// reason, since "try again in 7s" is the whole content of the answer.
+func TestCheckInHandlerRefused(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	checkiner := &fakeCheckIner{ack: models.CheckInAck{
+		Reason: "this host checked in less than 10s ago; try again in 7s",
+	}}
+
+	rec := postCheckIn(CheckInHandler(store, checkiner), "smallboi")
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "try again in 7s") {
+		t.Errorf("body = %q, want the host's own reason", rec.Body.String())
+	}
+}
+
+// TestCheckInHandlerNotListening covers a host that is offline or running a
+// client from before the command existed: not a server-side failure.
+func TestCheckInHandlerNotListening(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	checkiner := &fakeCheckIner{err: models.ErrHostNotListening}
+
+	rec := postCheckIn(CheckInHandler(store, checkiner), "smallboi")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
+	}
+}
+
+// TestCheckInHandlerWithoutNATS is the only way this route is unavailable: there
+// is no configuration that turns it off, only the absence of a connection to
+// send the command over.
+func TestCheckInHandlerWithoutNATS(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+
+	rec := postCheckIn(CheckInHandler(store, nil), "smallboi")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
 	}
 }

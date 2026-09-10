@@ -651,6 +651,30 @@ th.sortable.descending::after {
     opacity: 0.5;
 }
 
+/* Check-in button styles. Green rather than the update button's blue: the two
+   sit side by side and the quieter action should not read as the same weight. */
+.check-in-btn {
+    background: rgba(63, 185, 80, 0.15) !important;
+    border: 1px solid var(--accent-green) !important;
+    color: var(--accent-green) !important;
+    margin-right: 8px;
+    transition: all 0.2s ease;
+}
+
+.check-in-btn:hover:not(:disabled) {
+    background: rgba(63, 185, 80, 0.25) !important;
+    border-color: var(--accent-green) !important;
+    color: var(--accent-green) !important;
+}
+
+.check-in-btn:disabled {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
 /* Delete button styles */
 .delete-system-btn {
     background: rgba(248, 81, 73, 0.15) !important;

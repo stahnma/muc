@@ -47,6 +47,13 @@ type UpdateRequester interface {
 	RequestUpdate(hostname, requestedBy string) (models.UpdateAck, error)
 }
 
+// CheckInRequester asks one host to publish a fresh check-in, returning the
+// host's own answer. Implemented by the NATS connection; nil only when there is
+// no connection to ask over, since check-ins are not gated by configuration.
+type CheckInRequester interface {
+	RequestCheckIn(hostname, requestedBy string) (models.CheckInAck, error)
+}
+
 // GetSystemsHandler returns a JSON list of systems with pending updates details
 func GetSystemsHandler(store storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +199,7 @@ func FeaturesHandler(updater UpdateRequester) http.HandlerFunc {
 func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if updater == nil {
-			writeUpdateError(w, http.StatusForbidden,
+			writeAPIError(w, http.StatusForbidden,
 				"Remote updates are disabled on this server (set remote_updates: true to enable them)")
 			return
 		}
@@ -200,17 +207,17 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 		vars := mux.Vars(r)
 		hostname := strings.TrimSpace(vars["hostname"])
 		if hostname == "" {
-			writeUpdateError(w, http.StatusBadRequest, "Hostname is required")
+			writeAPIError(w, http.StatusBadRequest, "Hostname is required")
 			return
 		}
 
 		system, err := store.GetSystem(hostname)
 		if err != nil {
-			writeUpdateError(w, http.StatusNotFound, "System not found")
+			writeAPIError(w, http.StatusNotFound, "System not found")
 			return
 		}
 		if !system.RemoteUpdatesEnabled {
-			writeUpdateError(w, http.StatusConflict,
+			writeAPIError(w, http.StatusConflict,
 				"This host has not opted into remote updates (set allow_remote_updates: true in its client config)")
 			return
 		}
@@ -220,12 +227,12 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 		case errors.Is(err, models.ErrHostNotListening):
 			// The stored opt-in said yes but nothing answered, so the host is
 			// down or its client has since been reconfigured.
-			writeUpdateError(w, http.StatusServiceUnavailable,
+			writeAPIError(w, http.StatusServiceUnavailable,
 				"No response from "+hostname+": it is offline, or its client is no longer accepting update commands")
 			return
 		case err != nil:
 			slog.Error("Update request failed", "hostname", hostname, "error", err)
-			writeUpdateError(w, http.StatusBadGateway, "Update request failed: "+err.Error())
+			writeAPIError(w, http.StatusBadGateway, "Update request failed: "+err.Error())
 			return
 		}
 
@@ -234,7 +241,7 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 			if reason == "" {
 				reason = "the host refused the update request"
 			}
-			writeUpdateError(w, http.StatusConflict, reason)
+			writeAPIError(w, http.StatusConflict, reason)
 			return
 		}
 
@@ -252,9 +259,77 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 	}
 }
 
-// writeUpdateError returns a JSON error, which is what the dashboard's fetch
+// CheckInHandler asks a host to collect its state and publish it now, instead
+// of waiting out its poll interval.
+//
+// Nothing configured gates it. A check-in installs nothing and republishes only
+// what the client sends every few minutes anyway, so there is no server flag and
+// no host opt-in to consult — every client listens for the command. The limit
+// that does exist is the host's own minimum gap between commands, which comes
+// back as a refusal and is reported here as a 409.
+//
+// Like the update route it answers when the host has accepted, not when the
+// check has run: the check-in arrives separately and reaches the dashboard as an
+// ordinary system update.
+func CheckInHandler(store storage.Storage, requester CheckInRequester) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if requester == nil {
+			writeAPIError(w, http.StatusServiceUnavailable,
+				"Check-in requests are unavailable: the server has no NATS connection")
+			return
+		}
+
+		vars := mux.Vars(r)
+		hostname := strings.TrimSpace(vars["hostname"])
+		if hostname == "" {
+			writeAPIError(w, http.StatusBadRequest, "Hostname is required")
+			return
+		}
+
+		if _, err := store.GetSystem(hostname); err != nil {
+			writeAPIError(w, http.StatusNotFound, "System not found")
+			return
+		}
+
+		ack, err := requester.RequestCheckIn(hostname, requesterAddress(r))
+		switch {
+		case errors.Is(err, models.ErrHostNotListening):
+			// Every current client subscribes, so this is a host that is down
+			// or one running a client from before the command existed.
+			writeAPIError(w, http.StatusServiceUnavailable,
+				"No response from "+hostname+": it is offline, or its client is too old to accept check-in requests")
+			return
+		case err != nil:
+			slog.Error("Check-in request failed", "hostname", hostname, "error", err)
+			writeAPIError(w, http.StatusBadGateway, "Check-in request failed: "+err.Error())
+			return
+		}
+
+		if !ack.Accepted {
+			reason := ack.Reason
+			if reason == "" {
+				reason = "the host refused the check-in request"
+			}
+			writeAPIError(w, http.StatusConflict, reason)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		if err := json.NewEncoder(w).Encode(map[string]string{
+			"status":   "accepted",
+			"hostname": hostname,
+			"id":       ack.ID,
+			"message":  hostname + " is checking in",
+		}); err != nil {
+			slog.Error("Failed to write check-in response", "error", err)
+		}
+	}
+}
+
+// writeAPIError returns a JSON error, which is what the dashboard's fetch
 // handler reads to show the operator why nothing happened.
-func writeUpdateError(w http.ResponseWriter, status int, message string) {
+func writeAPIError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
@@ -286,7 +361,7 @@ func UpdateOutputHandler(runs *runlog.Store) http.HandlerFunc {
 
 		snapshot, ok := runs.Snapshot(hostname)
 		if !ok {
-			writeUpdateError(w, http.StatusNotFound, "No live output for "+hostname)
+			writeAPIError(w, http.StatusNotFound, "No live output for "+hostname)
 			return
 		}
 

@@ -23,6 +23,21 @@ document.addEventListener("DOMContentLoaded", () => {
     let features = { remote_updates: false };
 
     const RUN_UPDATE_LABEL = "\u2b07\ufe0f Run updates now";
+    const CHECK_IN_LABEL = "\ud83d\udd04 Check in now";
+    const CHECK_IN_WAITING_LABEL = "\u23f3 Checking in\u2026";
+
+    // Check-ins asked for from here, keyed by hostname: {since, timer}. A
+    // commanded check-in has no reply to wait for — the host says "will do" and
+    // then publishes an ordinary check-in — so the button is held until that
+    // payload arrives, and this is what remembers which hosts are waiting for
+    // one across the re-renders in between.
+    const pendingCheckIns = new Map();
+
+    // How long to hold a check-in button before giving up on it. Generous: a
+    // cold `dnf check-update --refresh` against a slow mirror is legitimately
+    // this slow, and the cost of being wrong is only that the button comes back
+    // early.
+    const CHECK_IN_TIMEOUT_MS = 120000;
 
     // Live output of update runs, keyed by hostname: {id, seq, text}. It is
     // held here rather than re-read from the server because the table re-renders
@@ -128,6 +143,10 @@ document.addEventListener("DOMContentLoaded", () => {
                         return;
                     }
                     
+                    // A commanded check-in is answered by the payload it
+                    // produces rather than by the request that asked for it.
+                    resolveCheckIn(update);
+
                     // Keep the payload: the expanded row renders from it rather
                     // than fetching the same thing again a millisecond later.
                     detailPayloads.set(update.hostname, { data: update, at: Date.now() });
@@ -1016,6 +1035,84 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     }
 
+    // Ask a host to check in now rather than at its next poll. The response only
+    // says the host accepted; the check-in itself arrives over the WebSocket a
+    // moment later and re-renders the row, which is what releases the button.
+    //
+    // No confirmation dialog and no opt-in behind it: this collects and
+    // publishes what the host reports anyway, and changes nothing.
+    function handleCheckIn(event) {
+        const button = event.currentTarget;
+        const hostname = button.dataset.hostname;
+        if (!hostname) {
+            console.error("No hostname found for check-in button");
+            return;
+        }
+
+        const system = systemsData.find((s) => s && s.hostname === hostname);
+        markCheckInPending(hostname, (system && system.updates_checked_at) || '');
+        button.disabled = true;
+        button.textContent = CHECK_IN_WAITING_LABEL;
+
+        fetch(`/api/systems/${encodeURIComponent(hostname)}/checkin`, { method: 'POST' })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Check-in request failed: ${response.status}`);
+                }
+                console.log("Check-in requested", body);
+            })
+            .catch((error) => {
+                clearCheckInPending(hostname);
+                console.error(`Failed to request a check-in on ${hostname}:`, error);
+                button.disabled = false;
+                button.textContent = CHECK_IN_LABEL;
+                if (!button.isConnected) {
+                    // A re-render replaced this button while the request was in
+                    // flight, so the one the operator is looking at is a
+                    // different node and still says "Checking in…".
+                    renderSystems(Array.from(systemsData));
+                }
+                // Last, so the page is already right when the modal clears.
+                alert(`Could not ask ${hostname} to check in:\n\n${error.message}`);
+            });
+    }
+
+    // since is the host's collection time as the page knew it when the button
+    // was pressed; anything newer is the check we asked for, or one that landed
+    // first and answers the same question.
+    function markCheckInPending(hostname, since) {
+        clearCheckInPending(hostname);
+        const timer = setTimeout(() => {
+            // Nothing arrived. The host may have gone away between accepting
+            // and publishing, and a control stuck at "Checking in…" is worse
+            // than one that lets the operator try again.
+            pendingCheckIns.delete(hostname);
+            renderSystems(Array.from(systemsData));
+        }, CHECK_IN_TIMEOUT_MS);
+        pendingCheckIns.set(hostname, { since, timer });
+    }
+
+    function clearCheckInPending(hostname) {
+        const pending = pendingCheckIns.get(hostname);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingCheckIns.delete(hostname);
+    }
+
+    // Release a pending check-in against a payload that just arrived. It keys on
+    // updates_checked_at, which is when the client actually read its package
+    // manager: last_seen is stamped by the server on receipt, so it would also
+    // move for a check-in whose data was collected before the button was
+    // pressed.
+    function resolveCheckIn(system) {
+        const pending = pendingCheckIns.get(system.hostname);
+        if (!pending) return;
+        const checked = system.updates_checked_at || '';
+        if (pending.since && checked <= pending.since) return;
+        clearCheckInPending(system.hostname);
+    }
+
     // Handle system deletion
     function handleDeleteSystem(event) {
         const hostname = event.target.dataset.hostname;
@@ -1122,12 +1219,19 @@ document.addEventListener("DOMContentLoaded", () => {
                     ${runActive ? '⏳ Update running' : RUN_UPDATE_LABEL}
                 </button>`
             : '';
+        // Unlike the update button this one is drawn for every host: asking for
+        // a check-in needs no opt-in at either end.
+        const checkInPending = pendingCheckIns.has(hostname);
+        const checkInButtonHTML = `<button class="check-in-btn" data-hostname="${escapeHtml(hostname)}"${checkInPending ? ' disabled' : ''}>
+                    ${checkInPending ? CHECK_IN_WAITING_LABEL : CHECK_IN_LABEL}
+                </button>`;
         const deleteButtonHTML = `
             ${updateRunHTML(hostname, data.last_update_run)}
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); text-align: right;">
                 ${isStale && staleDays >= 7 ? 
                     '<span style="margin-right: 12px; color: var(--accent-orange); font-size: 13px; font-weight: 500;">⚠️ This system has not checked in for ' + staleDays + ' days</span>' : 
                     ''}
+                ${checkInButtonHTML}
                 ${runUpdateButtonHTML}
                 <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">
                     🗑️ Delete System
@@ -1232,6 +1336,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const runUpdateBtn = detailsContent.querySelector('.run-update-btn');
         if (runUpdateBtn) {
             runUpdateBtn.addEventListener('click', handleRunUpdate);
+        }
+
+        // Attach check-in button event listener
+        const checkInBtn = detailsContent.querySelector('.check-in-btn');
+        if (checkInBtn) {
+            checkInBtn.addEventListener('click', handleCheckIn);
         }
 
         restoreOutputView(hostname, detailsContent, data.last_update_run);

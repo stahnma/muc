@@ -19,6 +19,9 @@ const (
 	// updateCommandSubjectPrefix carries a request for one host to install its
 	// pending packages. It sits outside checkInSubject deliberately.
 	updateCommandSubjectPrefix = "systems.commands.update."
+	// checkInCommandSubjectPrefix carries a request for one host to check in
+	// now. Also outside checkInSubject: it travels the other way.
+	checkInCommandSubjectPrefix = "systems.commands.checkin."
 	// updateResultSubject is where clients report update-run progress.
 	updateResultSubject       = "systems.results.update.>"
 	updateResultSubjectPrefix = "systems.results.update."
@@ -28,7 +31,7 @@ const (
 )
 
 // Conn is the server's connection to NATS: it feeds the subscriber and carries
-// dashboard-initiated update requests back out to the clients.
+// dashboard-initiated commands back out to the clients.
 type Conn struct {
 	nc *nats.Conn
 }

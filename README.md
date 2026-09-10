@@ -310,6 +310,7 @@ The web dashboard provides:
 - Last seen timestamps, plus when the update data itself was collected
 - Warnings when an update check was incomplete (e.g. a repository was skipped)
 - Tailnet status for hosts that use Tailscale (see below)
+- A check-in button on every host, to refresh a row now rather than at its next poll (see [Asking a host to check in](#asking-a-host-to-check-in))
 - An update button for hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard))
 
 ### Tailnet status
@@ -345,6 +346,40 @@ is sticky: once a host has been seen on a tailnet the server remembers which one
 so a host that drops off — or whose client stops reporting Tailscale entirely —
 shows a grey dot naming the tailnet it was last on, rather than silently losing
 its indicator.
+
+## Asking a host to check in
+
+A client checks in every five minutes, and out of band whenever the package
+database changes underneath it (see [Keeping update data fresh](#keeping-update-data-fresh)).
+When you want an answer sooner than either — you have just patched a host by
+hand, or a row looks wrong and you want to know whether it still is — expand the
+host's row and press **🔄 Check in now**. The host reads its package manager and
+publishes the result, and the row updates when it arrives.
+
+Unlike the update button this is on for every host, with nothing to enable at
+either end. A check-in installs nothing and changes nothing: it publishes exactly
+what the client publishes on its own every few minutes, so there is no state for
+the button to put a host into that time would not have put it into anyway.
+
+What it does cost is a package-manager query, and on dnf that means talking to
+every configured repository. So the client refuses a second command within **10
+seconds** of the last one it accepted, and says how long to wait — enough that
+anything on the network that can reach NATS still cannot hold a host at a
+continuous metadata refresh, and short enough that pressing the button twice
+because you doubt the first answer is not an argument.
+
+The request is answered when the host accepts it, not when the check has run: a
+cold `dnf check-update --refresh` against a slow mirror can take longer than
+anyone will hold an HTTP request open for. The button therefore waits for the
+check-in itself to arrive rather than for its own response, and gives up after
+two minutes if nothing does. A host that is offline — or running a client from
+before this existed — answers nothing at all, and the dashboard says so.
+
+The same thing over the API:
+
+```bash
+curl -X POST http://muc-server:8080/api/systems/web01/checkin
+```
 
 ## Running updates from the dashboard
 
