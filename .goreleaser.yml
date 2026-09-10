@@ -95,6 +95,27 @@ nfpms:
         dst: /usr/libexec/muc/upd
         file_info:
           mode: 0755
+    # needs-restarting is how the client answers "does this host need a reboot"
+    # on rpm systems. Without it that check falls back to comparing the running
+    # kernel against the newest installed one, which cannot see a glibc or
+    # systemd update at all, so hosts under-report reboots rather than
+    # over-report them — silently.
+    #
+    # A weak dependency, not a hard one: one rpm is built for every rpm distro,
+    # and SUSE packages no needs-restarting at all (the client uses `zypper
+    # needs-rebooting` there), so requiring it would make the package
+    # uninstallable on a platform the client otherwise supports. dnf installs
+    # weak dependencies by default, so EL and Fedora get it regardless.
+    #
+    # On the file rather than on dnf-utils, because the package that owns it
+    # keeps moving: EL8 and EL9 have a real dnf-utils, EL10 ships the command in
+    # yum-utils (which only Provides dnf-utils), and Fedora's dnf5 has moved it
+    # again. The file path is the requirement itself and resolves to whichever
+    # of them the host has.
+    overrides:
+      rpm:
+        recommends:
+          - /usr/bin/needs-restarting
     scripts:
       preinstall: client/dist/preinstall.sh
       postinstall: client/dist/postinstall.sh

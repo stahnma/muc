@@ -272,6 +272,47 @@ func TestUpdateScriptIsShipped(t *testing.T) {
 		"the update script must be installed executable")
 }
 
+// TestClientPackageRecommendsNeedsRestarting pins the reboot-detection
+// dependency, and pins it as a weak one.
+//
+// hostinfo.RebootRequired asks needs-restarting on rpm systems; without it the
+// answer falls back to comparing the running kernel against the newest
+// installed one, which cannot see a glibc or systemd update at all. Hosts then
+// under-report reboots silently, which is the failure mode nobody notices.
+//
+// It must stay a recommendation. One rpm is built for every rpm distro, and
+// SUSE packages no needs-restarting at all — the client uses `zypper
+// needs-rebooting` there — so a hard requirement would make the package
+// uninstallable on a platform it otherwise supports. dnf installs weak
+// dependencies by default, so EL and Fedora get it anyway.
+//
+// The dependency is on the file, not on dnf-utils, because the package owning
+// it moves: EL8/EL9 have a real dnf-utils, EL10 ships the command in yum-utils
+// (which only Provides dnf-utils), and Fedora's dnf5 has moved it again.
+func TestClientPackageRecommendsNeedsRestarting(t *testing.T) {
+	release := readFileOrFail(t, ".goreleaser.yml")
+
+	const needsRestarting = "/usr/bin/needs-restarting"
+	assertContains(t, release, needsRestarting,
+		"the client rpm must pull in needs-restarting; without it reboot detection can only compare kernel versions")
+
+	// The entry has to sit directly under a recommends: key. Listed as a
+	// dependency instead, it would be a hard Requires.
+	lines := strings.Split(release, "\n")
+	weak := false
+	for i, line := range lines {
+		if strings.TrimSpace(line) != "recommends:" || i+1 >= len(lines) {
+			continue
+		}
+		if strings.Contains(lines[i+1], needsRestarting) {
+			weak = true
+		}
+	}
+	if !weak {
+		t.Errorf("%s must be listed under recommends:, not as a hard dependency: the same rpm installs on SUSE, which packages no such command", needsRestarting)
+	}
+}
+
 // TestClientUnitStaysSandboxed records why remote updates run in a transient
 // systemd unit rather than as a child of the client.
 //
