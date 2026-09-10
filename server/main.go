@@ -91,7 +91,7 @@ func main() {
 
 	// Start the web server
 	slog.Info("Starting web server...")
-	go web.StartWebServer(store, config.HTTPPort, Version, updater, runs)
+	go web.StartWebServer(store, config.HTTPPort, Version, updater, conn, runs)
 
 	// Register with Consul in the background. Registration retries until it
 	// succeeds and is re-asserted afterward, so a Consul agent that is down at

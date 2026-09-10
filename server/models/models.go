@@ -2,11 +2,11 @@ package models
 
 import "errors"
 
-// ErrHostNotListening is returned when an update request reaches nobody: the
-// host is offline, or its client has not opted into remote updates. It lives
-// here so the transport and the HTTP layer can agree on it without one
-// importing the other.
-var ErrHostNotListening = errors.New("host is not listening for update commands")
+// ErrHostNotListening is returned when a command request reaches nobody: the
+// host is offline, its client is too old to know the subject, or — for update
+// commands — it has not opted into remote updates. It lives here so the
+// transport and the HTTP layer can agree on it without one importing the other.
+var ErrHostNotListening = errors.New("host is not listening for commands")
 
 type System struct {
 	Hostname            string   `json:"hostname"`
@@ -75,6 +75,17 @@ type UpdateAck struct {
 	Accepted bool   `json:"accepted"`
 	Reason   string `json:"reason,omitempty"`
 	Command  string `json:"command,omitempty"`
+}
+
+// CheckInAck is a host's immediate answer to a check-in request. It says only
+// that the host will check in: the check-in itself arrives separately, on the
+// ordinary check-in subject, because a package-manager query can take longer
+// than anyone is willing to hold a request open for.
+type CheckInAck struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Accepted bool   `json:"accepted"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 type Update struct {

@@ -423,19 +423,32 @@ func main() {
 		return true
 	}
 
-	// A finished update run asks the loop below to check in again. That is not
-	// the same request SIGUSR1 makes: see the two cases in the loop.
-	recheckAfterUpdate := make(chan struct{}, 1)
+	// A finished update run and the dashboard's check-in button both ask the
+	// loop below to check in at once. That is not the same request SIGUSR1
+	// makes: see the two cases in the loop.
+	recheckNow := make(chan struct{}, 1)
+
+	// Both command subjects are addressed to this host by name, so neither
+	// listener can be started without knowing it.
+	hostname, hostErr := os.Hostname()
+
+	// Check-in commands need no opt-in on either end: they publish what this
+	// client publishes anyway, and install nothing. The listener rate-limits
+	// them itself.
+	if hostErr != nil {
+		slog.Error("Hostname is unknown; not listening for check-in commands", "error", hostErr)
+	} else if err := startCheckInListener(nc, hostname, recheckNow); err != nil {
+		slog.Error("Cannot listen for check-in commands", "error", err)
+	}
 
 	// Remote updates are off unless this host opted in, and stay off if it
 	// opted in without a usable update command — advertising the capability
 	// then would put a button on the dashboard that could only ever fail.
 	remoteUpdates := false
 	if cfg.AllowRemoteUpdates {
-		hostname, hostErr := os.Hostname()
 		if hostErr != nil {
 			slog.Error("Remote updates requested but the hostname is unknown; not listening", "error", hostErr)
-		} else if err := startUpdateListener(nc, hostname, cfg, recheckAfterUpdate); err != nil {
+		} else if err := startUpdateListener(nc, hostname, cfg, recheckNow); err != nil {
 			slog.Error("Remote updates requested but cannot be served", "error", err)
 		} else {
 			remoteUpdates = true
@@ -482,16 +495,17 @@ func main() {
 			slog.Debug("Re-check requested; waiting for package transaction to settle",
 				"settle", recheckSettleDelay)
 			settle.arm(recheckSettleDelay)
-		case <-recheckAfterUpdate:
-			// Our own transaction, and the update command has already exited —
-			// there is nothing left to settle. Checking in now is what stops
-			// the dashboard from listing the packages this run just installed
-			// as still pending.
+		case <-recheckNow:
+			// Our own trigger: an update run whose command has already exited,
+			// or an operator asking for a check-in from the dashboard. Neither
+			// leaves a transaction in flight, so there is nothing to settle —
+			// and checking in now is what stops the dashboard from listing the
+			// packages a run just installed as still pending.
 			//
-			// The run wrote the package database too, so the path unit has
+			// A run wrote the package database too, so the path unit has
 			// probably armed the timer above; drop that, because this check
 			// answers it.
-			slog.Info("Update run finished; re-checking for updates now")
+			slog.Info("Immediate re-check requested; checking in now")
 			settle.disarm()
 			if checkConnection() {
 				sendSystemUpdate(nc, remoteUpdates)
