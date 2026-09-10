@@ -277,6 +277,29 @@ timestamps in two places mostly serve to disagree with each other. Instead, when
 the two diverge the host's update badge is flagged with a ⚠, so a badge backed
 by hours-old data is not mistaken for a fresh one.
 
+### Reboot detection
+
+The dashboard's reboot flag comes from whatever the host can answer it with, in
+order: the `/run/reboot-required` flag file on Debian and Ubuntu,
+`needs-restarting -r` on the RHEL/Fedora side, `zypper needs-rebooting` on SUSE,
+and — where none of those exist — a comparison of the running kernel against the
+newest installed one.
+
+That last fallback only sees kernel updates, so a host that needs a reboot for
+glibc or systemd looks fine. The rpm package therefore **recommends**
+`/usr/bin/needs-restarting`, which dnf installs by default: the command lives in
+`dnf-utils` on EL8 and EL9 and in `yum-utils` on EL10, so the dependency is on
+the file rather than on a name that has moved twice. It is a recommendation and
+not a requirement because the same rpm installs on SUSE, which packages no such
+command and does not need it.
+
+If you install with weak dependencies turned off (`--setopt=install_weak_deps=False`),
+install it yourself to get reboot flags you can trust:
+
+```bash
+sudo dnf install /usr/bin/needs-restarting
+```
+
 ## Usage
 
 1. **Start the server**:
