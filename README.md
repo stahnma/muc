@@ -78,6 +78,7 @@ Configuration is powered by [Viper](https://github.com/spf13/viper).
 | `consul_tags` | `MUC_CONSUL_TAGS` | (none) | Comma-separated Consul tags for the HTTP (`muc`) service |
 | `consul_nats_tags` | `MUC_CONSUL_NATS_TAGS` | (falls back to `consul_tags`) | Comma-separated Consul tags for the NATS (`muc-nats`) service |
 | `remote_updates` | `MUC_REMOTE_UPDATES` | `false` | Allow the dashboard to run updates on hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard)) |
+| `remote_reboot` | `MUC_REMOTE_REBOOT` | `false` | Allow the dashboard to reboot hosts that have opted in (see [Rebooting a host from the dashboard](#rebooting-a-host-from-the-dashboard)) |
 
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
@@ -115,6 +116,8 @@ consul_nats_tags:
   - nats
 # Off by default. See "Running updates from the dashboard".
 remote_updates: false
+# Also off by default, and separate. See "Rebooting a host from the dashboard".
+remote_reboot: false
 ```
 
 ### Client Configuration
@@ -137,6 +140,7 @@ The client supports automatic server discovery using multiple methods, tried in 
 - `MUC_NATS_CONSUL_SERVICE`: Consul service name to query (default: tries `nats`, `muc-nats`, `muc-server` in order)
 - `MUC_ALLOW_REMOTE_UPDATES`: Let the dashboard run updates on this host (default: `false`)
 - `MUC_UPDATE_COMMAND`: The update script to run (default: the packaged `/usr/libexec/muc/upd`)
+- `MUC_ALLOW_REMOTE_REBOOT`: Let the dashboard reboot this host when it reports a pending reboot (default: `false`)
 
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
@@ -589,6 +593,72 @@ journalctl -u 'muc-update-*' --since -1d # every run of the last day
 
 `--collect` removes the unit once it has finished, but its journal entries are
 records and outlive it.
+
+## Rebooting a host from the dashboard
+
+An update often ends with the ⟳ **Reboot required** flag beside the hostname.
+The dashboard can finish the job: expand the host's row, tick **Confirm reboot**,
+and press **⏻ Reboot**. The checkbox is the confirmation — there is no dialog —
+so a stray click on the button does nothing, and the tick is dropped when the
+reboot is sent or the row is collapsed.
+
+**It is off by default, gated exactly like remote updates, but by its own pair
+of flags.** Letting the dashboard patch a host and letting it interrupt whatever
+that host is doing are different decisions, so a host can allow one without the
+other:
+
+| Where | Setting | Effect |
+|-------|---------|--------|
+| Each host (`/etc/muc/client.yml`) | `allow_remote_reboot: true` | The client subscribes to its reboot-command subject. Without it the command reaches nobody. |
+| The server (`/etc/muc/config.yml`) | `remote_reboot: true` | The dashboard draws the control and `POST /api/systems/{hostname}/reboot` works. Without it the route returns 403. |
+
+The same caveat as updates applies: this is a convenience for a trusted network,
+not an authorization boundary.
+
+```yaml
+# /etc/muc/client.yml
+allow_remote_reboot: true
+```
+
+```bash
+systemctl restart muc-client
+```
+
+### When the control is enabled
+
+Only when the host's last check-in reported a reboot pending, no update run is
+in progress on it, and no reboot is already under way. Otherwise both the
+checkbox and the button are drawn disabled, with the reason as a tooltip. The
+host checks for itself when the command arrives — the dashboard's flag may date
+from before a reboot someone did by hand — and refuses if it no longer sees one
+pending, or if an update is running.
+
+There is no "reboot anyway". The flag is deliberately conservative (see [Reboot
+detection](#reboot-detection)), so a host whose flag under-reports needs
+`needs-restarting` installed, or a reboot from its own shell.
+
+### What happens during a reboot
+
+The host answers the request, publishes a reboot record, and then runs
+`systemctl reboot` (or `shutdown -r now` without systemd). From that point
+nothing on the host can report anything — the client goes down with it — so:
+
+- The hostname shows a pulsing **⏻** in place of the reboot-required flag, and
+  the expanded row says **Rebooting — requested N ago**.
+- The record is marked **Rebooted** by the server when the host next checks in
+  with an uptime that puts its boot after the request. The client checks in as
+  soon as it starts, so this is typically within a minute or two of the host
+  being back.
+- If no such check-in arrives within ten minutes, the indicator turns orange
+  and the row says the host has not checked in since — it may still be coming
+  up, or it may need a look at the console.
+
+A reboot command that fails outright (it can — a stuck inhibitor, say) is the
+one outcome the host can still report, and it does: the row shows **Reboot
+failed** with the command's own error, and the control comes back.
+
+The request is logged on the host before the reboot, with the address it came
+from, so `journalctl -u muc-client -b -1` says who did it.
 
 ## Alternatives
 

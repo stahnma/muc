@@ -23,3 +23,10 @@
 # /usr/libexec/muc/upd, falling back to /usr/local/bin/upd, /usr/bin/upd, then
 # 'upd' on PATH. Set this to use a different script.
 # update_command: /usr/local/bin/upd
+
+# Let the dashboard reboot this host when it reports a pending reboot. Off by
+# default, and separate from allow_remote_updates: patching this host and
+# interrupting whatever it is doing are different decisions. The server must
+# also set remote_reboot: true. The same caveat about unauthenticated NATS
+# applies.
+# allow_remote_reboot: true

@@ -71,15 +71,24 @@ type System struct {
 	// hosts that report it, so a fleet where nothing has opted in shows no
 	// buttons at all.
 	RemoteUpdatesEnabled bool `json:"remote_updates_enabled"`
+	// RemoteRebootEnabled says this host is listening for reboot commands. Its
+	// own flag, reported the same way, for the dashboard's reboot button.
+	RemoteRebootEnabled bool `json:"remote_reboot_enabled"`
 }
 
-// Collects all system data to prepare for publishing. remoteUpdates says
-// whether this client is actually listening for update commands, which is not
-// simply the config flag: a host that opted in but has no update script to run
-// must not advertise the capability.
-func collectSystemData(remoteUpdates bool) (System, error) {
+// capabilities is what this client actually listens for, which is not simply
+// the config flags: a host that opted into updates but has no update script to
+// run must not advertise the capability.
+type capabilities struct {
+	remoteUpdates bool
+	remoteReboot  bool
+}
+
+// Collects all system data to prepare for publishing.
+func collectSystemData(caps capabilities) (System, error) {
 	var system System
-	system.RemoteUpdatesEnabled = remoteUpdates
+	system.RemoteUpdatesEnabled = caps.remoteUpdates
+	system.RemoteRebootEnabled = caps.remoteReboot
 
 	// Hostname
 	hostname, err := os.Hostname()
@@ -166,7 +175,7 @@ func collectSystemData(remoteUpdates bool) (System, error) {
 }
 
 // Publishes system data to NATS
-func sendSystemUpdate(nc *nats.Conn, remoteUpdates bool) {
+func sendSystemUpdate(nc *nats.Conn, caps capabilities) {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()
@@ -174,7 +183,7 @@ func sendSystemUpdate(nc *nats.Conn, remoteUpdates bool) {
 	}()
 
 	// Collect system data
-	system, err := collectSystemData(remoteUpdates)
+	system, err := collectSystemData(caps)
 	if err != nil {
 		slog.Error("Failed to collect system data", "error", err)
 		return
@@ -444,20 +453,34 @@ func main() {
 	// Remote updates are off unless this host opted in, and stay off if it
 	// opted in without a usable update command — advertising the capability
 	// then would put a button on the dashboard that could only ever fail.
-	remoteUpdates := false
+	var caps capabilities
+	var runner *updateRunner
 	if cfg.AllowRemoteUpdates {
 		if hostErr != nil {
 			slog.Error("Remote updates requested but the hostname is unknown; not listening", "error", hostErr)
-		} else if err := startUpdateListener(nc, hostname, cfg, recheckNow); err != nil {
+		} else if r, err := startUpdateListener(nc, hostname, cfg, recheckNow); err != nil {
 			slog.Error("Remote updates requested but cannot be served", "error", err)
 		} else {
-			remoteUpdates = true
+			runner = r
+			caps.remoteUpdates = true
+		}
+	}
+
+	// Remote reboots have their own opt-in. The listener asks the runner above
+	// whether an update is in flight before it accepts; a nil runner answers no.
+	if cfg.AllowRemoteReboot {
+		if hostErr != nil {
+			slog.Error("Remote reboots requested but the hostname is unknown; not listening", "error", hostErr)
+		} else if err := startRebootListener(nc, hostname, runner.isRunning); err != nil {
+			slog.Error("Remote reboots requested but cannot be served", "error", err)
+		} else {
+			caps.remoteReboot = true
 		}
 	}
 
 	// Send the first update immediately
 	if checkConnection() {
-		sendSystemUpdate(nc, remoteUpdates)
+		sendSystemUpdate(nc, caps)
 	}
 
 	// Run the client as a long-running daemon
@@ -485,7 +508,7 @@ func main() {
 		select {
 		case <-ticker.C:
 			if checkConnection() {
-				sendSystemUpdate(nc, remoteUpdates)
+				sendSystemUpdate(nc, caps)
 			}
 		case <-healthTicker.C:
 			checkConnection()
@@ -508,12 +531,12 @@ func main() {
 			slog.Info("Immediate re-check requested; checking in now")
 			settle.disarm()
 			if checkConnection() {
-				sendSystemUpdate(nc, remoteUpdates)
+				sendSystemUpdate(nc, caps)
 			}
 		case <-settle.C():
 			slog.Info("Package transaction detected; re-checking for updates")
 			if checkConnection() {
-				sendSystemUpdate(nc, remoteUpdates)
+				sendSystemUpdate(nc, caps)
 			}
 		}
 	}

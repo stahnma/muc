@@ -96,6 +96,12 @@ func (c *Conn) StartSubscriber(store storage.Storage, runs *runlog.Store) error 
 	}
 	slog.Info("Successfully subscribed to subject", "subject", updateOutputSubject)
 
+	slog.Debug("Subscribing to subject pattern", "subject", rebootResultSubject)
+	if _, err := c.nc.Subscribe(rebootResultSubject, rebootResultHandler(store)); err != nil {
+		return err
+	}
+	slog.Info("Successfully subscribed to subject", "subject", rebootResultSubject)
+
 	slog.Info("NATS subscriber is now running and listening for messages...")
 	return nil
 }
@@ -151,6 +157,9 @@ func checkInHandler(store storage.Storage) nats.MsgHandler {
 			// check-in, so carry the last one forward. Without this the record
 			// of a run would survive only until the host next checked in.
 			system.LastUpdateRun = previous.LastUpdateRun
+			// Likewise the last reboot — and this check-in may be the one that
+			// says it happened.
+			system.LastReboot = resolveReboot(previous.LastReboot, system.UptimeSeconds, time.Now())
 		}
 		system.Tailscale = models.MergeTailscale(previousTailscale, system.Tailscale, time.Now())
 

@@ -84,6 +84,15 @@ func fullySetSystem() models.System {
 			Error:       "",
 			Output:      "upd: done\n",
 		},
+		RemoteRebootEnabled: true,
+		LastReboot: &models.Reboot{
+			ID:          "1a2b3c4d5e6f7081",
+			Status:      "rebooted",
+			RequestedBy: "192.168.1.20",
+			Command:     "/usr/bin/systemctl reboot",
+			RequestedAt: "2026-07-31T23:41:00Z",
+			FinishedAt:  "2026-07-31T23:42:30Z",
+		},
 	}
 }
 
@@ -238,6 +247,30 @@ func (f *fakeCheckIner) RequestCheckIn(hostname, requestedBy string) (models.Che
 	return f.ack, f.err
 }
 
+// fakeRebooter stands in for the NATS connection in the reboot tests.
+type fakeRebooter struct {
+	ack      models.RebootAck
+	err      error
+	hostname string // recorded from the last call
+	by       string
+	calls    int
+}
+
+func (f *fakeRebooter) RequestReboot(hostname, requestedBy string) (models.RebootAck, error) {
+	f.calls++
+	f.hostname = hostname
+	f.by = requestedBy
+	return f.ack, f.err
+}
+
+func postReboot(handler http.HandlerFunc, hostname string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/systems/"+hostname+"/reboot", nil)
+	req = mux.SetURLVars(req, map[string]string{"hostname": hostname})
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	return rec
+}
+
 func postCheckIn(handler http.HandlerFunc, hostname string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/systems/"+hostname+"/checkin", nil)
 	req = mux.SetURLVars(req, map[string]string{"hostname": hostname})
@@ -354,23 +387,30 @@ func TestRunUpdateHandlerNotListening(t *testing.T) {
 // the update button at all.
 func TestFeaturesHandler(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		updater UpdateRequester
-		want    bool
+		name        string
+		updater     UpdateRequester
+		rebooter    RebootRequester
+		wantUpdates bool
+		wantReboot  bool
 	}{
-		{"disabled", nil, false},
-		{"enabled", &fakeUpdater{}, true},
+		{"disabled", nil, nil, false, false},
+		{"updates only", &fakeUpdater{}, nil, true, false},
+		{"reboot only", nil, &fakeRebooter{}, false, true},
+		{"both", &fakeUpdater{}, &fakeRebooter{}, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			FeaturesHandler(tc.updater)(rec, httptest.NewRequest(http.MethodGet, "/api/features", nil))
+			FeaturesHandler(tc.updater, tc.rebooter)(rec, httptest.NewRequest(http.MethodGet, "/api/features", nil))
 
 			var got map[string]bool
 			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 				t.Fatalf("decoding response: %v", err)
 			}
-			if got["remote_updates"] != tc.want {
-				t.Errorf("remote_updates = %v, want %v", got["remote_updates"], tc.want)
+			if got["remote_updates"] != tc.wantUpdates {
+				t.Errorf("remote_updates = %v, want %v", got["remote_updates"], tc.wantUpdates)
+			}
+			if got["remote_reboot"] != tc.wantReboot {
+				t.Errorf("remote_reboot = %v, want %v", got["remote_reboot"], tc.wantReboot)
 			}
 		})
 	}
@@ -454,6 +494,125 @@ func TestCheckInHandlerWithoutNATS(t *testing.T) {
 	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
 
 	rec := postCheckIn(CheckInHandler(store, nil), "smallboi")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
+	}
+}
+
+// TestRebootHandlerDisabled pins the server-side half of the reboot opt-in: no
+// rebooter wired in means the route refuses and dispatches nothing.
+func TestRebootHandlerDisabled(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+
+	rec := postReboot(RebootHandler(store, nil), "smallboi")
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rec.Code)
+	}
+}
+
+// TestRebootHandlerHostNotOptedIn: the reboot opt-in is its own flag, so a host
+// that allows updates but not reboots is refused here.
+func TestRebootHandlerHostNotOptedIn(t *testing.T) {
+	system := fullySetSystem()
+	system.RemoteUpdatesEnabled = true
+	system.RemoteRebootEnabled = false
+	store := &fakeStorage{systems: []models.System{system}}
+	rebooter := &fakeRebooter{ack: models.RebootAck{Accepted: true}}
+
+	rec := postReboot(RebootHandler(store, rebooter), "smallboi")
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if rebooter.calls != 0 {
+		t.Errorf("dispatched %d reboot requests to a host that has not opted in, want 0", rebooter.calls)
+	}
+	if !strings.Contains(rec.Body.String(), "allow_remote_reboot") {
+		t.Errorf("body = %q, want it to name the client setting", rec.Body.String())
+	}
+}
+
+// TestRebootHandlerNoRebootPending: the dashboard only enables the button for a
+// host reporting reboot_required, and the route holds the same line.
+func TestRebootHandlerNoRebootPending(t *testing.T) {
+	system := fullySetSystem()
+	system.RebootRequired = false
+	store := &fakeStorage{systems: []models.System{system}}
+	rebooter := &fakeRebooter{ack: models.RebootAck{Accepted: true}}
+
+	rec := postReboot(RebootHandler(store, rebooter), "smallboi")
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if rebooter.calls != 0 {
+		t.Errorf("dispatched %d reboot requests to a host with no reboot pending, want 0", rebooter.calls)
+	}
+}
+
+func TestRebootHandlerUnknownHost(t *testing.T) {
+	store := &fakeStorage{}
+	rebooter := &fakeRebooter{ack: models.RebootAck{Accepted: true}}
+
+	rec := postReboot(RebootHandler(store, rebooter), "nosuchhost")
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+	if rebooter.calls != 0 {
+		t.Errorf("dispatched %d reboot requests for an unknown host, want 0", rebooter.calls)
+	}
+}
+
+func TestRebootHandlerAccepted(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	rebooter := &fakeRebooter{ack: models.RebootAck{ID: "abc123", Accepted: true}}
+
+	rec := postReboot(RebootHandler(store, rebooter), "smallboi")
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if rebooter.hostname != "smallboi" {
+		t.Errorf("dispatched to %q, want %q", rebooter.hostname, "smallboi")
+	}
+	if rebooter.by == "" {
+		t.Error("requested_by not passed through; the host's journal should say who asked")
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if body["id"] != "abc123" {
+		t.Errorf("id = %q, want the host's own request id %q", body["id"], "abc123")
+	}
+}
+
+// TestRebootHandlerRefused carries the host's own reason through: it is the
+// host that knows an update is running or that no reboot is pending any more.
+func TestRebootHandlerRefused(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	rebooter := &fakeRebooter{ack: models.RebootAck{
+		Reason: "an update is running on this host; reboot it once the run has finished",
+	}}
+
+	rec := postReboot(RebootHandler(store, rebooter), "smallboi")
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "an update is running") {
+		t.Errorf("body = %q, want the host's own reason", rec.Body.String())
+	}
+}
+
+func TestRebootHandlerNotListening(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{fullySetSystem()}}
+	rebooter := &fakeRebooter{err: models.ErrHostNotListening}
+
+	rec := postReboot(RebootHandler(store, rebooter), "smallboi")
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)

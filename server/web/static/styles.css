@@ -502,6 +502,21 @@ th.sortable.descending::after {
     font-size: 13px;
 }
 
+/* Marks a host that is rebooting, in place of its reboot-required flag. It
+   pulses while the reboot is believed to be in progress and goes orange and
+   still once the host is overdue. */
+.rebooting-indicator {
+    color: var(--accent-blue);
+    margin-left: 4px;
+    font-size: 14px;
+    animation: update-run-pulse 2s ease-in-out infinite;
+}
+
+.rebooting-indicator.overdue {
+    color: var(--accent-orange);
+    animation: none;
+}
+
 /* Marks a host with an update run in progress, alongside its update badge. */
 .update-running-indicator {
     color: var(--accent-blue);
@@ -617,7 +632,8 @@ th.sortable.descending::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .update-run-live {
+    .update-run-live,
+    .rebooting-indicator {
         animation: none;
     }
 }
@@ -668,6 +684,60 @@ th.sortable.descending::after {
 }
 
 .check-in-btn:disabled {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Reboot controls: a confirmation checkbox and the button it arms. Orange —
+   more consequential than patching, less than deleting the record. The
+   checkbox is the confirmation, so there is no dialog. */
+.reboot-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 8px;
+}
+
+.reboot-arm {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.reboot-arm input {
+    margin: 0;
+    accent-color: var(--accent-orange);
+    cursor: pointer;
+}
+
+.reboot-arm.disabled,
+.reboot-arm.disabled input {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.reboot-btn {
+    background: rgba(240, 136, 62, 0.15) !important;
+    border: 1px solid var(--accent-orange) !important;
+    color: var(--accent-orange) !important;
+    transition: all 0.2s ease;
+}
+
+.reboot-btn:hover:not(:disabled) {
+    background: rgba(240, 136, 62, 0.25) !important;
+    border-color: var(--accent-orange) !important;
+    color: var(--accent-orange) !important;
+}
+
+.reboot-btn:disabled {
     background: var(--bg-tertiary) !important;
     border-color: var(--border-color) !important;
     color: var(--text-muted) !important;

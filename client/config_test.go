@@ -82,3 +82,40 @@ func TestLoadClientConfig_RemoteUpdatesFromEnv(t *testing.T) {
 		t.Error("AllowRemoteUpdates = false, want true from MUC_ALLOW_REMOTE_UPDATES")
 	}
 }
+
+func TestLoadClientConfig_RemoteRebootDefaultOff(t *testing.T) {
+	cfg := loadClientConfigFromPaths([]string{t.TempDir()})
+
+	if cfg.AllowRemoteReboot {
+		t.Error("AllowRemoteReboot = true by default; remote reboots must be opt-in")
+	}
+}
+
+// TestLoadClientConfig_RemoteRebootIsSeparate pins the two opt-ins apart: a host
+// that allows updates has not thereby allowed reboots.
+func TestLoadClientConfig_RemoteRebootIsSeparate(t *testing.T) {
+	dir := t.TempDir()
+	body := "allow_remote_updates: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "client.yml"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := loadClientConfigFromPaths([]string{dir})
+
+	if !cfg.AllowRemoteUpdates {
+		t.Error("AllowRemoteUpdates = false, want true from the config file")
+	}
+	if cfg.AllowRemoteReboot {
+		t.Error("AllowRemoteReboot = true, but only allow_remote_updates was set")
+	}
+}
+
+func TestLoadClientConfig_RemoteRebootFromEnv(t *testing.T) {
+	t.Setenv("MUC_ALLOW_REMOTE_REBOOT", "true")
+
+	cfg := loadClientConfigFromPaths([]string{t.TempDir()})
+
+	if !cfg.AllowRemoteReboot {
+		t.Error("AllowRemoteReboot = false, want true from MUC_ALLOW_REMOTE_REBOOT")
+	}
+}
