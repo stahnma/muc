@@ -143,10 +143,11 @@ func (m *wsConnectionManager) broadcast(update interface{}) {
 // StartWebServer serves the dashboard and the API. updater is nil unless the
 // server is configured to allow remote updates; the update route and the
 // /api/features flag both key off it, so there is one thing to get wrong
-// instead of two. checkins has no such flag — asking a host to check in is not
-// gated — and is nil only when there is no NATS connection to ask over. runs
-// carries the live output of update runs in flight.
-func StartWebServer(store storage.Storage, port string, version string, updater api.UpdateRequester, checkins api.CheckInRequester, runs *runlog.Store) {
+// instead of two; rebooter is the same for remote reboots. checkins has no such
+// flag — asking a host to check in is not gated — and is nil only when there is
+// no NATS connection to ask over. runs carries the live output of update runs
+// in flight.
+func StartWebServer(store storage.Storage, port string, version string, updater api.UpdateRequester, rebooter api.RebootRequester, checkins api.CheckInRequester, runs *runlog.Store) {
 	r := mux.NewRouter()
 	connManager := newWSConnectionManager()
 
@@ -179,8 +180,9 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 	r.HandleFunc("/api/systems/{hostname}", api.DeleteSystemHandler(store)).Methods("DELETE")
 	r.HandleFunc("/api/systems/{hostname}/update", api.RunUpdateHandler(store, updater)).Methods("POST")
 	r.HandleFunc("/api/systems/{hostname}/checkin", api.CheckInHandler(store, checkins)).Methods("POST")
+	r.HandleFunc("/api/systems/{hostname}/reboot", api.RebootHandler(store, rebooter)).Methods("POST")
 	r.HandleFunc("/api/systems/{hostname}/update/output", api.UpdateOutputHandler(runs)).Methods("GET")
-	r.HandleFunc("/api/features", api.FeaturesHandler(updater)).Methods("GET")
+	r.HandleFunc("/api/features", api.FeaturesHandler(updater, rebooter)).Methods("GET")
 
 	// API documentation endpoint
 	r.HandleFunc("/apidoc", apiDocsHandler(version))

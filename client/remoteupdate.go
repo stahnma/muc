@@ -146,23 +146,24 @@ type updateRunner struct {
 // startUpdateListener subscribes to this host's update-command subject. It
 // returns an error when remote updates cannot be served, so the caller can
 // leave the capability unadvertised rather than offer the dashboard a button
-// that will always fail.
-func startUpdateListener(nc *nats.Conn, hostname string, cfg ClientConfig, recheck chan<- struct{}) error {
+// that will always fail. The runner comes back so the reboot listener can ask
+// whether a run is in flight.
+func startUpdateListener(nc *nats.Conn, hostname string, cfg ClientConfig, recheck chan<- struct{}) (*updateRunner, error) {
 	command, err := resolveUpdateCommand(cfg.UpdateCommand)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	r := &updateRunner{nc: nc, hostname: hostname, command: command, recheck: recheck}
 
 	subject := updateCommandSubjectPrefix + hostname
 	if _, err := nc.Subscribe(subject, r.handle); err != nil {
-		return fmt.Errorf("subscribing to %s: %w", subject, err)
+		return nil, fmt.Errorf("subscribing to %s: %w", subject, err)
 	}
 
 	slog.Info("Remote updates enabled; listening for update commands",
 		"subject", subject, "command", command)
-	return nil
+	return r, nil
 }
 
 // resolveUpdateCommand picks the update command. A configured path must exist
@@ -246,6 +247,17 @@ func (r *updateRunner) release() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.running = false
+}
+
+// isRunning reports whether a run holds the slot. nil-safe, so a caller that
+// has no runner (remote updates off) can hold a nil and ask anyway.
+func (r *updateRunner) isRunning() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.running
 }
 
 func (r *updateRunner) run(req updateRequest) {

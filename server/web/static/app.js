@@ -20,9 +20,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Optional server capabilities, read from /api/features. Remote updates are
     // assumed off until the server says otherwise, so a server that does not
     // offer them never draws a button for them.
-    let features = { remote_updates: false };
+    let features = { remote_updates: false, remote_reboot: false };
 
     const RUN_UPDATE_LABEL = "\u2b07\ufe0f Run updates now";
+    const REBOOT_LABEL = "\u23fb Reboot";
+    const REBOOT_WAITING_LABEL = "\u23f3 Rebooting\u2026";
     const CHECK_IN_LABEL = "\ud83d\udd04 Check in now";
     const CHECK_IN_WAITING_LABEL = "\u23f3 Checking in\u2026";
 
@@ -38,6 +40,25 @@ document.addEventListener("DOMContentLoaded", () => {
     // this slow, and the cost of being wrong is only that the button comes back
     // early.
     const CHECK_IN_TIMEOUT_MS = 120000;
+
+    // Hosts whose reboot checkbox is ticked. The table re-renders on every
+    // check-in from any host, so the tick has to live here or an unrelated
+    // host checking in would clear it under the operator's cursor. A host
+    // leaves the set when its reboot is sent or its row is collapsed.
+    const armedReboots = new Set();
+
+    // Reboots asked for from here, keyed by hostname: {id, timer}. The host
+    // says "going down" and then its record arrives over the WebSocket as an
+    // ordinary system update; this holds the button until that record lands,
+    // and gives up after a while if it never does.
+    const pendingReboots = new Map();
+    const REBOOT_PENDING_TIMEOUT_MS = 30000;
+
+    // How long a host may be "rebooting" before the dashboard stops taking
+    // that at face value. A host that has not checked in this long after a
+    // reboot was requested has not come back, and the row should say so
+    // rather than show a spinner forever.
+    const REBOOT_OVERDUE_MS = 10 * 60 * 1000;
 
     // Live output of update runs, keyed by hostname: {id, seq, text}. It is
     // held here rather than re-read from the server because the table re-renders
@@ -146,6 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // A commanded check-in is answered by the payload it
                     // produces rather than by the request that asked for it.
                     resolveCheckIn(update);
+                    resolvePendingReboot(update);
 
                     // Keep the payload: the expanded row renders from it rather
                     // than fetching the same thing again a millisecond later.
@@ -279,7 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 return response.json();
             })
             .then((data) => {
-                features = Object.assign({ remote_updates: false }, data || {});
+                features = Object.assign({ remote_updates: false, remote_reboot: false }, data || {});
             })
             .catch((error) => {
                 console.warn("Could not read server features; assuming none:", error);
@@ -766,7 +788,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
-                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${system.reboot_required ? ' ' + tooltipIcon('⟳', 'reboot-indicator', 'Reboot required') : ''}</td>
+                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${rebootIndicator(system)}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
@@ -847,6 +869,39 @@ document.addEventListener("DOMContentLoaded", () => {
         const started = Date.parse(run.started_at || "");
         if (isNaN(started)) return true;
         return Date.now() - started < RUN_ABANDONED_MS;
+    }
+
+    // A reboot is believed to be in progress from the host's own record until
+    // its next check-in closes it — or until it has been long enough that a
+    // spinner would be a lie; see REBOOT_OVERDUE_MS.
+    function isRebooting(reboot) {
+        return !!reboot && reboot.status === "rebooting";
+    }
+
+    function isRebootOverdue(reboot) {
+        if (!isRebooting(reboot)) return false;
+        const requested = Date.parse(reboot.requested_at || "");
+        if (isNaN(requested)) return false;
+        return Date.now() - requested > REBOOT_OVERDUE_MS;
+    }
+
+    // The mark beside the hostname: the reboot in progress takes the place of
+    // the "reboot required" flag it is about to clear, and turns into a warning
+    // once the host is overdue.
+    function rebootIndicator(system) {
+        const reboot = system && system.last_reboot;
+        if (isRebootOverdue(reboot)) {
+            return ' ' + tooltipIcon('\u23fb', 'rebooting-indicator overdue',
+                `Reboot requested ${formatRelativeTime(reboot.requested_at || '')}; the host has not checked in since`);
+        }
+        if (isRebooting(reboot)) {
+            return ' ' + tooltipIcon('\u23fb', 'rebooting-indicator',
+                `Rebooting \u2014 requested ${formatRelativeTime(reboot.requested_at || '')}`);
+        }
+        if (system && system.reboot_required) {
+            return ' ' + tooltipIcon('\u27f3', 'reboot-indicator', 'Reboot required');
+        }
+        return '';
     }
 
     // A small indicator in the table so a run in progress is visible without
@@ -998,6 +1053,175 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${notes.length ? `<p>${notes.join(' \u00b7 ')}</p>` : ''}
                 ${output}
             </div>`;
+    }
+
+    // The record of the last dashboard-triggered reboot, in the expanded
+    // details. It borrows the update-run block's styling: the colours mean the
+    // same things.
+    function rebootHTML(reboot) {
+        if (!reboot) return '';
+
+        const overdue = isRebootOverdue(reboot);
+        const active = isRebooting(reboot) && !overdue;
+        let heading;
+        let tone;
+        if (active) {
+            heading = `\u23fb Rebooting &mdash; requested ${escapeHtml(formatRelativeTime(reboot.requested_at || ''))}`;
+            tone = 'running';
+        } else if (overdue) {
+            heading = `\u2753 Reboot requested ${escapeHtml(formatRelativeTime(reboot.requested_at || ''))} &mdash; the host has not checked in since`;
+            tone = 'unknown';
+        } else if (reboot.status === "rebooted") {
+            heading = `\u2705 Rebooted &mdash; back ${escapeHtml(formatRelativeTime(reboot.finished_at || reboot.requested_at || ''))}`;
+            tone = 'succeeded';
+        } else {
+            heading = `\u274c Reboot failed ${escapeHtml(formatRelativeTime(reboot.finished_at || reboot.requested_at || ''))}`;
+            tone = 'failed';
+        }
+
+        const notes = [];
+        if (reboot.requested_by) notes.push(`requested from ${escapeHtml(reboot.requested_by)}`);
+        if (reboot.command) notes.push(`ran <code>${escapeHtml(reboot.command)}</code>`);
+        if (reboot.error) notes.push(escapeHtml(reboot.error));
+        if (overdue) {
+            notes.push('it may still be coming up, or it may need a look at the console');
+        }
+
+        return `<div class="update-run reboot-record update-run-${tone}">
+                <h4>${heading}</h4>
+                ${notes.length ? `<p>${notes.join(' \u00b7 ')}</p>` : ''}
+            </div>`;
+    }
+
+    // The reboot control is a checkbox and a button: the checkbox is the
+    // confirmation, so a stray click on the button does nothing until the
+    // operator has ticked it. Both are drawn only where server and host have
+    // opted in, and both are disabled unless the host reports a reboot pending
+    // and nothing else is going on.
+    function rebootControlsHTML(hostname, data, runActive) {
+        if (!(features.remote_reboot && data.remote_reboot_enabled)) return '';
+
+        const reboot = data.last_reboot;
+        const pending = pendingReboots.has(hostname);
+        let blocker = '';
+        if (pending || isRebooting(reboot)) {
+            blocker = 'A reboot is in progress';
+        } else if (runActive) {
+            blocker = 'An update is running; reboot when it has finished';
+        } else if (!data.reboot_required) {
+            blocker = 'No reboot pending';
+        }
+        const armed = !blocker && armedReboots.has(hostname);
+
+        const label = pending || isRebooting(reboot) ? REBOOT_WAITING_LABEL : REBOOT_LABEL;
+        return `<span class="reboot-controls"${blocker ? ` title="${escapeHtml(blocker)}"` : ''}>
+                    <label class="reboot-arm${blocker ? ' disabled' : ''}">
+                        <input type="checkbox" class="reboot-arm-checkbox" data-hostname="${escapeHtml(hostname)}"${armed ? ' checked' : ''}${blocker ? ' disabled' : ''}>
+                        Confirm reboot
+                    </label>
+                    <button class="reboot-btn" data-hostname="${escapeHtml(hostname)}"${armed ? '' : ' disabled'}>
+                        ${label}
+                    </button>
+                </span>`;
+    }
+
+    // Drop a host's confirmation. The details pane is kept across a collapse
+    // and re-expand rather than re-rendered, so the controls in it are reset
+    // here too — a checkbox that still looked ticked would arm nothing.
+    function disarmReboot(hostname) {
+        armedReboots.delete(hostname);
+        const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
+        if (!detailsRow) return;
+        const checkbox = detailsRow.querySelector('.reboot-arm-checkbox');
+        if (checkbox) checkbox.checked = false;
+        const button = detailsRow.querySelector('.reboot-btn');
+        if (button) button.disabled = true;
+    }
+
+    // The checkbox arms the button, and only for this render: the armed set
+    // is what carries it across the next one.
+    function handleRebootArm(event) {
+        const checkbox = event.currentTarget;
+        const hostname = checkbox.dataset.hostname;
+        if (!hostname) return;
+        if (checkbox.checked) {
+            armedReboots.add(hostname);
+        } else {
+            armedReboots.delete(hostname);
+        }
+        const button = checkbox.closest('.reboot-controls').querySelector('.reboot-btn');
+        if (button) button.disabled = !checkbox.checked;
+    }
+
+    // Ask a host to reboot. The response says the host accepted, which is the
+    // last thing it says before going down; its record follows over the
+    // WebSocket, and its next check-in is what says it came back.
+    function handleReboot(event) {
+        const button = event.currentTarget;
+        const hostname = button.dataset.hostname;
+        if (!hostname) {
+            console.error("No hostname found for reboot button");
+            return;
+        }
+        if (!armedReboots.has(hostname)) {
+            // The button should have been disabled; treat it as if it were.
+            return;
+        }
+
+        const system = systemsData.find((s) => s && s.hostname === hostname);
+        const previousId = (system && system.last_reboot && system.last_reboot.id) || '';
+        markRebootPending(hostname, previousId);
+        armedReboots.delete(hostname);
+        button.disabled = true;
+        button.textContent = REBOOT_WAITING_LABEL;
+        const checkbox = button.closest('.reboot-controls').querySelector('.reboot-arm-checkbox');
+        if (checkbox) {
+            checkbox.checked = false;
+            checkbox.disabled = true;
+        }
+
+        fetch(`/api/systems/${encodeURIComponent(hostname)}/reboot`, { method: 'POST' })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Reboot request failed: ${response.status}`);
+                }
+                console.log("Reboot requested", body);
+            })
+            .catch((error) => {
+                clearRebootPending(hostname);
+                console.error(`Failed to reboot ${hostname}:`, error);
+                // Disarmed on purpose: a retry should take a fresh tick, not a
+                // second click.
+                renderSystems(Array.from(systemsData));
+                alert(`Could not reboot ${hostname}:\n\n${error.message}`);
+            });
+    }
+
+    // previousId is the reboot record the page knew when the button was
+    // pressed; a record with a different id is the one we asked for.
+    function markRebootPending(hostname, previousId) {
+        clearRebootPending(hostname);
+        const timer = setTimeout(() => {
+            pendingReboots.delete(hostname);
+            renderSystems(Array.from(systemsData));
+        }, REBOOT_PENDING_TIMEOUT_MS);
+        pendingReboots.set(hostname, { previousId, timer });
+    }
+
+    function clearRebootPending(hostname) {
+        const pending = pendingReboots.get(hostname);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingReboots.delete(hostname);
+    }
+
+    function resolvePendingReboot(system) {
+        const pending = pendingReboots.get(system.hostname);
+        if (!pending) return;
+        const reboot = system.last_reboot;
+        if (!reboot || reboot.id === pending.previousId) return;
+        clearRebootPending(system.hostname);
     }
 
     // Ask a host to install its pending updates. The response only says the host
@@ -1227,12 +1451,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 </button>`;
         const deleteButtonHTML = `
             ${updateRunHTML(hostname, data.last_update_run)}
+            ${rebootHTML(data.last_reboot)}
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); text-align: right;">
                 ${isStale && staleDays >= 7 ? 
                     '<span style="margin-right: 12px; color: var(--accent-orange); font-size: 13px; font-weight: 500;">⚠️ This system has not checked in for ' + staleDays + ' days</span>' : 
                     ''}
                 ${checkInButtonHTML}
                 ${runUpdateButtonHTML}
+                ${rebootControlsHTML(hostname, data, runActive)}
                 <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">
                     🗑️ Delete System
                 </button>
@@ -1344,6 +1570,16 @@ document.addEventListener("DOMContentLoaded", () => {
             checkInBtn.addEventListener('click', handleCheckIn);
         }
 
+        // Attach the reboot checkbox and button
+        const rebootArm = detailsContent.querySelector('.reboot-arm-checkbox');
+        if (rebootArm) {
+            rebootArm.addEventListener('change', handleRebootArm);
+        }
+        const rebootBtn = detailsContent.querySelector('.reboot-btn');
+        if (rebootBtn) {
+            rebootBtn.addEventListener('click', handleReboot);
+        }
+
         restoreOutputView(hostname, detailsContent, data.last_update_run);
         seedLiveOutput(hostname, data.last_update_run);
     }
@@ -1404,6 +1640,7 @@ document.addEventListener("DOMContentLoaded", () => {
             detailsRow.style.display = "none";
             chevron.textContent = "▶";
             expandedSystems.delete(hostname); // Remove from expanded set
+            disarmReboot(hostname); // A closed row is not a confirmed one
         }
     });
 
@@ -1451,6 +1688,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 detailsRow.style.display = "none";
                 chevron.textContent = "▶";
                 expandedSystems.delete(hostname);
+                disarmReboot(hostname);
             }
         });
     }

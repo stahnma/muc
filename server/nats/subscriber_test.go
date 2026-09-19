@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"server/models"
 	"testing"
+	"time"
 
 	nats "github.com/nats-io/nats.go"
 )
@@ -153,5 +154,123 @@ func TestCheckInCarriesTheOptIn(t *testing.T) {
 
 	if store.systems["smallboi"].RemoteUpdatesEnabled {
 		t.Error("RemoteUpdatesEnabled stayed true after the client stopped reporting it")
+	}
+}
+
+func TestRebootResultHandlerRecordsReboot(t *testing.T) {
+	store := newMemStore(models.System{Hostname: "smallboi"})
+
+	rebootResultHandler(store)(msg(t, "systems.results.reboot.smallboi", models.Reboot{
+		ID:          "abc",
+		Status:      models.RebootStatusRebooting,
+		RequestedBy: "192.168.1.20",
+		RequestedAt: "2026-09-18T12:00:00Z",
+	}))
+
+	got := store.systems["smallboi"].LastReboot
+	if got == nil {
+		t.Fatal("LastReboot not recorded")
+	}
+	if got.ID != "abc" || got.Status != models.RebootStatusRebooting || got.RequestedBy != "192.168.1.20" {
+		t.Errorf("LastReboot = %+v, want the published record", got)
+	}
+}
+
+func TestRebootResultHandlerUnknownHost(t *testing.T) {
+	store := newMemStore()
+
+	rebootResultHandler(store)(msg(t, "systems.results.reboot.ghost", models.Reboot{ID: "abc"}))
+
+	if store.saves != 0 {
+		t.Errorf("saved %d systems for a reboot result from an unknown host, want 0", store.saves)
+	}
+}
+
+// TestCheckInCompletesTheReboot is how a reboot ends: the host cannot say it
+// came back, so a check-in whose uptime puts the boot after the request does.
+func TestCheckInCompletesTheReboot(t *testing.T) {
+	requestedAt := time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339)
+	store := newMemStore(models.System{
+		Hostname:      "smallboi",
+		UptimeSeconds: 100000,
+		LastReboot:    &models.Reboot{ID: "abc", Status: models.RebootStatusRebooting, RequestedAt: requestedAt},
+	})
+
+	checkInHandler(store)(msg(t, "systems.updates.smallboi", models.System{
+		Hostname:      "smallboi",
+		UptimeSeconds: 90, // booted a minute and a half ago: after the request
+	}))
+
+	got := store.systems["smallboi"].LastReboot
+	if got == nil {
+		t.Fatal("LastReboot was dropped by the check-in")
+	}
+	if got.Status != models.RebootStatusRebooted {
+		t.Errorf("status = %q, want %q after a check-in from the rebooted host", got.Status, models.RebootStatusRebooted)
+	}
+	if got.FinishedAt == "" {
+		t.Error("FinishedAt not stamped")
+	}
+	if got.ID != "abc" || got.RequestedAt != requestedAt {
+		t.Errorf("record = %+v, want the original request's id and time kept", got)
+	}
+}
+
+// TestCheckInKeepsARebootStillPending: a check-in the host managed to publish
+// after accepting but before going down must not be mistaken for its return.
+func TestCheckInKeepsARebootStillPending(t *testing.T) {
+	requestedAt := time.Now().Add(-10 * time.Second).UTC().Format(time.RFC3339)
+	store := newMemStore(models.System{
+		Hostname:   "smallboi",
+		LastReboot: &models.Reboot{ID: "abc", Status: models.RebootStatusRebooting, RequestedAt: requestedAt},
+	})
+
+	checkInHandler(store)(msg(t, "systems.updates.smallboi", models.System{
+		Hostname:      "smallboi",
+		UptimeSeconds: 100000, // up for a day: booted long before the request
+	}))
+
+	got := store.systems["smallboi"].LastReboot
+	if got == nil || got.Status != models.RebootStatusRebooting {
+		t.Errorf("LastReboot = %+v, want it still rebooting", got)
+	}
+}
+
+func TestResolveRebootLeavesFinishedRecordsAlone(t *testing.T) {
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	for _, status := range []string{models.RebootStatusRebooted, models.RebootStatusFailed} {
+		previous := &models.Reboot{Status: status, RequestedAt: "2026-09-18T11:00:00Z", FinishedAt: "2026-09-18T11:05:00Z"}
+		got := resolveReboot(previous, 60, now)
+		if got != previous {
+			t.Errorf("status %q: record was rewritten, want it returned untouched", status)
+		}
+	}
+	if got := resolveReboot(nil, 60, now); got != nil {
+		t.Errorf("nil record became %+v", got)
+	}
+}
+
+// TestResolveRebootNeedsAnUptime: a client that cannot read uptime reports 0,
+// which would put the boot at "now" and complete every reboot on the next
+// check-in whether or not one happened.
+func TestResolveRebootNeedsAnUptime(t *testing.T) {
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	previous := &models.Reboot{Status: models.RebootStatusRebooting, RequestedAt: "2026-09-18T11:00:00Z"}
+
+	if got := resolveReboot(previous, 0, now); got.Status != models.RebootStatusRebooting {
+		t.Errorf("status = %q with no uptime, want still rebooting", got.Status)
+	}
+}
+
+func TestCheckInCarriesTheRebootOptIn(t *testing.T) {
+	store := newMemStore(models.System{Hostname: "smallboi", RemoteRebootEnabled: true})
+
+	checkInHandler(store)(msg(t, "systems.updates.smallboi", models.System{
+		Hostname:            "smallboi",
+		RemoteRebootEnabled: false,
+	}))
+
+	if store.systems["smallboi"].RemoteRebootEnabled {
+		t.Error("RemoteRebootEnabled stayed true after the client stopped reporting it")
 	}
 }

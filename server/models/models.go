@@ -4,7 +4,7 @@ import "errors"
 
 // ErrHostNotListening is returned when a command request reaches nobody: the
 // host is offline, its client is too old to know the subject, or — for update
-// commands — it has not opted into remote updates. It lives here so the
+// and reboot commands — it has not opted in. It lives here so the
 // transport and the HTTP layer can agree on it without one importing the other.
 var ErrHostNotListening = errors.New("host is not listening for commands")
 
@@ -46,6 +46,53 @@ type System struct {
 	// where none has happened. It arrives on its own subject rather than in the
 	// check-in, so the subscriber carries it across check-ins.
 	LastUpdateRun *UpdateRun `json:"last_update_run,omitempty"`
+	// RemoteRebootEnabled is reported by the client: the host opted into being
+	// rebooted from the dashboard. Gated like RemoteUpdatesEnabled, by its own
+	// pair of flags — a host may allow one without the other.
+	RemoteRebootEnabled bool `json:"remote_reboot_enabled"`
+	// LastReboot is the most recent dashboard-triggered reboot, or nil where
+	// none has happened. Like LastUpdateRun it arrives on its own subject and is
+	// carried across check-ins; unlike it, the host cannot report its own end —
+	// see Reboot.
+	LastReboot *Reboot `json:"last_reboot,omitempty"`
+}
+
+// Reboot records one dashboard-triggered reboot. The client publishes it once,
+// as it goes down; the server marks it complete itself when the host's next
+// check-in shows a boot time later than the request, because the process that
+// would have reported completion did not survive the reboot. Its JSON must stay
+// in step with the client's rebootRecord.
+type Reboot struct {
+	ID     string `json:"id"`
+	Status string `json:"status"` // rebooting, rebooted, or failed
+	// RequestedBy is the address the dashboard request came from.
+	RequestedBy string `json:"requested_by,omitempty"`
+	Command     string `json:"command,omitempty"`
+	RequestedAt string `json:"requested_at"`
+	// FinishedAt is when the host was next seen after the reboot, or when the
+	// reboot command failed. Empty while the host is still down.
+	FinishedAt string `json:"finished_at,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// Reboot statuses. Rebooting is what the client publishes on its way down;
+// the other two are how it ends.
+const (
+	RebootStatusRebooting = "rebooting"
+	RebootStatusRebooted  = "rebooted"
+	RebootStatusFailed    = "failed"
+)
+
+// RebootAck is a host's immediate answer to a reboot request: whether it is
+// going down. Like the other acks it says nothing about the outcome, which
+// arrives on the result subject — and, for the reboot itself, as the host's next
+// check-in.
+type RebootAck struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Accepted bool   `json:"accepted"`
+	Reason   string `json:"reason,omitempty"`
+	Command  string `json:"command,omitempty"`
 }
 
 // UpdateRun records one dashboard-triggered update run on a host. The client

@@ -76,6 +76,15 @@
       "finished_at": "2024-01-15T10:24:47Z",
       "exit_code": 0,
       "output": "upd: done\n"
+    },
+    "remote_reboot_enabled": true,
+    "last_reboot": {
+      "id": "1a2b3c4d5e6f7081",
+      "status": "rebooted",
+      "requested_by": "192.168.1.20",
+      "command": "/usr/bin/systemctl reboot",
+      "requested_at": "2024-01-15T10:25:00Z",
+      "finished_at": "2024-01-15T10:26:30Z"
     }
   }
 ]</div>
@@ -324,6 +333,62 @@
 
         <div class="endpoint">
             <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/systems/{hostname}/reboot</span>
+            </div>
+            <div class="description">
+                Asks a host to reboot. Returns as soon as the host has accepted, which is the last thing it says
+                before going down: it publishes a <code>last_reboot</code> record with status <code>rebooting</code>
+                and runs <code>systemctl reboot</code>. The server marks the record <code>rebooted</code> itself when
+                the host's next check-in shows it booted after the request — nothing on the host survives to say so.
+                <br><br>
+                Gated like <code>/update</code>, by its own pair of flags: <code>remote_reboot: true</code> on the
+                server and <code>allow_remote_reboot: true</code> in the host's client config. The route also requires
+                the host to have reported <code>reboot_required</code> at its last check-in, and the host refuses if
+                it no longer sees a reboot pending or an update run is in progress.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Path Parameters</div>
+                <div class="param">
+                    <div class="param-name">hostname</div>
+                    <div class="param-desc">The hostname of the system to reboot (required)</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">202 Accepted</span>
+                    <span>The host accepted and is rebooting</span>
+                </div>
+                <div class="code-block">{
+  "status": "accepted",
+  "hostname": "server1.example.com",
+  "id": "1a2b3c4d5e6f7081",
+  "message": "server1.example.com is rebooting"
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">403 Forbidden</span>
+                    <span>Remote reboots are disabled on this server</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>System not found</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code notfound">409 Conflict</span>
+                    <span>The host has not opted in, reported no pending reboot, is running an update, or is already rebooting</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code error">503 Service Unavailable</span>
+                    <span>No response from the host: it is offline, or no longer accepting reboot commands</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
                 <span class="method get">GET</span>
                 <span class="path">/api/features</span>
             </div>
@@ -339,7 +404,8 @@
                     <span>Feature flags</span>
                 </div>
                 <div class="code-block">{
-  "remote_updates": true
+  "remote_updates": true,
+  "remote_reboot": false
 }</div>
             </div>
         </div>

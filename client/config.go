@@ -17,6 +17,11 @@ type ClientConfig struct {
 	// UpdateCommand overrides the update script to run. Empty means "find the
 	// packaged upd script"; see resolveUpdateCommand.
 	UpdateCommand string
+	// AllowRemoteReboot is the opt-in for "reboot from the dashboard". It is
+	// separate from AllowRemoteUpdates on purpose: patching a host and bouncing
+	// it are different decisions, and a host running something that must not
+	// be interrupted can allow the first without the second.
+	AllowRemoteReboot bool
 }
 
 func LoadClientConfig() ClientConfig {
@@ -30,6 +35,7 @@ func loadClientConfigFromPaths(paths []string) ClientConfig {
 	v.SetDefault("nats_port", "4222")
 	v.SetDefault("allow_remote_updates", false)
 	v.SetDefault("update_command", "")
+	v.SetDefault("allow_remote_reboot", false)
 
 	v.SetConfigName("client")
 	v.SetConfigType("yaml")
@@ -53,5 +59,6 @@ func loadClientConfigFromPaths(paths []string) ClientConfig {
 		NATSPort:           v.GetString("nats_port"),
 		AllowRemoteUpdates: v.GetBool("allow_remote_updates"),
 		UpdateCommand:      v.GetString("update_command"),
+		AllowRemoteReboot:  v.GetBool("allow_remote_reboot"),
 	}
 }

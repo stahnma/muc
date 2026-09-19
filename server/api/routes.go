@@ -38,6 +38,8 @@ type SystemSummary struct {
 	// to offer the update button.
 	RemoteUpdatesEnabled bool              `json:"remote_updates_enabled"`
 	LastUpdateRun        *models.UpdateRun `json:"last_update_run,omitempty"`
+	RemoteRebootEnabled  bool              `json:"remote_reboot_enabled"`
+	LastReboot           *models.Reboot    `json:"last_reboot,omitempty"`
 }
 
 // UpdateRequester asks one host to install its pending packages, returning the
@@ -45,6 +47,13 @@ type SystemSummary struct {
 // not configured to allow remote updates.
 type UpdateRequester interface {
 	RequestUpdate(hostname, requestedBy string) (models.UpdateAck, error)
+}
+
+// RebootRequester asks one host to reboot, returning the host's own answer.
+// Implemented by the NATS connection; nil when the server is not configured to
+// allow remote reboots.
+type RebootRequester interface {
+	RequestReboot(hostname, requestedBy string) (models.RebootAck, error)
 }
 
 // CheckInRequester asks one host to publish a fresh check-in, returning the
@@ -89,6 +98,8 @@ func GetSystemsHandler(store storage.Storage) http.HandlerFunc {
 
 				RemoteUpdatesEnabled: system.RemoteUpdatesEnabled,
 				LastUpdateRun:        system.LastUpdateRun,
+				RemoteRebootEnabled:  system.RemoteRebootEnabled,
+				LastReboot:           system.LastReboot,
 			})
 		}
 
@@ -177,11 +188,12 @@ func DeleteSystemHandler(store storage.Storage) http.HandlerFunc {
 
 // FeaturesHandler tells the dashboard which optional capabilities this server
 // offers, so the UI can hide controls that would only ever return an error.
-func FeaturesHandler(updater UpdateRequester) http.HandlerFunc {
+func FeaturesHandler(updater UpdateRequester, rebooter RebootRequester) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{
 			"remote_updates": updater != nil,
+			"remote_reboot":  rebooter != nil,
 		}); err != nil {
 			slog.Error("Failed to write features response", "error", err)
 		}
@@ -255,6 +267,82 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 			"message":  "Update started on " + hostname,
 		}); err != nil {
 			slog.Error("Failed to write update response", "error", err)
+		}
+	}
+}
+
+// RebootHandler asks a host to reboot.
+//
+// Gated like the update route, by its own pair of flags: remote_reboot on the
+// server and allow_remote_reboot on the host, and the host's is the one that
+// gates anything. It also insists the host's last check-in reported a pending
+// reboot — the dashboard only enables its button then, and the API should not
+// be a way around that — and the host checks again for itself when asked.
+//
+// It answers when the host has accepted, which is the last thing the host says
+// before it goes down. Its reboot record arrives over NATS a moment later, and
+// the reboot is marked complete when the host next checks in.
+func RebootHandler(store storage.Storage, rebooter RebootRequester) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if rebooter == nil {
+			writeAPIError(w, http.StatusForbidden,
+				"Remote reboots are disabled on this server (set remote_reboot: true to enable them)")
+			return
+		}
+
+		vars := mux.Vars(r)
+		hostname := strings.TrimSpace(vars["hostname"])
+		if hostname == "" {
+			writeAPIError(w, http.StatusBadRequest, "Hostname is required")
+			return
+		}
+
+		system, err := store.GetSystem(hostname)
+		if err != nil {
+			writeAPIError(w, http.StatusNotFound, "System not found")
+			return
+		}
+		if !system.RemoteRebootEnabled {
+			writeAPIError(w, http.StatusConflict,
+				"This host has not opted into remote reboots (set allow_remote_reboot: true in its client config)")
+			return
+		}
+		if !system.RebootRequired {
+			writeAPIError(w, http.StatusConflict,
+				"This host did not report a pending reboot at its last check-in")
+			return
+		}
+
+		ack, err := rebooter.RequestReboot(hostname, requesterAddress(r))
+		switch {
+		case errors.Is(err, models.ErrHostNotListening):
+			writeAPIError(w, http.StatusServiceUnavailable,
+				"No response from "+hostname+": it is offline, or its client is no longer accepting reboot commands")
+			return
+		case err != nil:
+			slog.Error("Reboot request failed", "hostname", hostname, "error", err)
+			writeAPIError(w, http.StatusBadGateway, "Reboot request failed: "+err.Error())
+			return
+		}
+
+		if !ack.Accepted {
+			reason := ack.Reason
+			if reason == "" {
+				reason = "the host refused the reboot request"
+			}
+			writeAPIError(w, http.StatusConflict, reason)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		if err := json.NewEncoder(w).Encode(map[string]string{
+			"status":   "accepted",
+			"hostname": hostname,
+			"id":       ack.ID,
+			"message":  hostname + " is rebooting",
+		}); err != nil {
+			slog.Error("Failed to write reboot response", "error", err)
 		}
 	}
 }

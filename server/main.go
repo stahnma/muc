@@ -89,9 +89,18 @@ func main() {
 		slog.Info("Remote updates are disabled (set remote_updates: true to enable them)")
 	}
 
+	// Remote reboots are gated the same way, by their own flag.
+	var rebooter api.RebootRequester
+	if config.RemoteReboot {
+		rebooter = conn
+		slog.Warn("Remote reboots are enabled: hosts that have opted in can be rebooted from the dashboard")
+	} else {
+		slog.Info("Remote reboots are disabled (set remote_reboot: true to enable them)")
+	}
+
 	// Start the web server
 	slog.Info("Starting web server...")
-	go web.StartWebServer(store, config.HTTPPort, Version, updater, conn, runs)
+	go web.StartWebServer(store, config.HTTPPort, Version, updater, rebooter, conn, runs)
 
 	// Register with Consul in the background. Registration retries until it
 	// succeeds and is re-asserted afterward, so a Consul agent that is down at

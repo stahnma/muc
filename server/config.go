@@ -23,6 +23,11 @@ type Config struct {
 	// config), and a host that has not opted in cannot be patched however this
 	// is set.
 	RemoteUpdates bool
+	// RemoteReboot lets the dashboard ask hosts that report a pending reboot to
+	// reboot. Off by default, and separate from RemoteUpdates: the two are
+	// different permissions, on the server as on the hosts (allow_remote_reboot
+	// in their client config).
+	RemoteReboot bool
 }
 
 func LoadConfig() Config {
@@ -41,6 +46,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 	v.SetDefault("consul_tags", "")
 	v.SetDefault("consul_nats_tags", "")
 	v.SetDefault("remote_updates", false)
+	v.SetDefault("remote_reboot", false)
 
 	// Read from config.yml if present
 	v.SetConfigName("config")
@@ -90,6 +96,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 		ConsulTags:     consulTags,
 		ConsulNATSTags: consulNATSTags,
 		RemoteUpdates:  v.GetBool("remote_updates"),
+		RemoteReboot:   v.GetBool("remote_reboot"),
 	}
 
 	slog.Info("Loaded configuration",
@@ -101,6 +108,7 @@ func LoadConfigFromPaths(configPaths []string) Config {
 		"consul_tags", config.ConsulTags,
 		"consul_nats_tags", config.ConsulNATSTags,
 		"remote_updates", config.RemoteUpdates,
+		"remote_reboot", config.RemoteReboot,
 	)
 	return config
 }

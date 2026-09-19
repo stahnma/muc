@@ -30,3 +30,11 @@ http_port: 8080
 # There is no authentication in front of the dashboard or NATS, so this is a
 # home-network convenience, not an authorization boundary.
 # remote_updates: true
+
+# Remote reboots (off by default)
+#
+# When true, the dashboard offers a reboot control for hosts that report a
+# pending reboot and have themselves opted in (allow_remote_reboot in their
+# client config), and POST /api/systems/{hostname}/reboot starts working.
+# Separate from remote_updates on purpose; the same caveat applies.
+# remote_reboot: true
