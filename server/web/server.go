@@ -184,6 +184,21 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 	r.HandleFunc("/api/systems/{hostname}/update/output", api.UpdateOutputHandler(runs)).Methods("GET")
 	r.HandleFunc("/api/features", api.FeaturesHandler(updater, rebooter)).Methods("GET")
 
+	// Groups. They need no configuration of their own: a group is server-side
+	// bookkeeping, so the CRUD routes are always on, and the two group actions
+	// that can do something to a host are gated by exactly the flags their
+	// single-host counterparts are.
+	r.HandleFunc("/api/groups", api.ListGroupsHandler(store)).Methods("GET")
+	r.HandleFunc("/api/groups", api.CreateGroupHandler(store)).Methods("POST")
+	r.HandleFunc("/api/groups/{group}", api.GetGroupHandler(store)).Methods("GET")
+	r.HandleFunc("/api/groups/{group}", api.UpdateGroupHandler(store)).Methods("PUT")
+	r.HandleFunc("/api/groups/{group}", api.DeleteGroupHandler(store)).Methods("DELETE")
+	r.HandleFunc("/api/groups/{group}/members/{hostname}", api.RemoveGroupMemberHandler(store)).Methods("DELETE")
+	r.HandleFunc("/api/groups/{group}/update", api.GroupUpdateHandler(store, updater)).Methods("POST")
+	r.HandleFunc("/api/groups/{group}/checkin", api.GroupCheckInHandler(store, checkins)).Methods("POST")
+	r.HandleFunc("/api/groups/{group}/reboot", api.GroupRebootHandler(store, rebooter)).Methods("POST")
+	r.HandleFunc("/api/systems/{hostname}/groups", api.SetSystemGroupsHandler(store)).Methods("PUT")
+
 	// API documentation endpoint
 	r.HandleFunc("/apidoc", apiDocsHandler(version))
 

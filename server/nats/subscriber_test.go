@@ -2,6 +2,7 @@ package nats
 
 import (
 	"encoding/json"
+	"errors"
 	"server/models"
 	"testing"
 	"time"
@@ -52,6 +53,17 @@ func (s *memStore) DeleteSystem(hostname string) error {
 }
 
 func (s *memStore) SubscribeToUpdates() <-chan models.System { return make(chan models.System) }
+
+// Groups play no part in the NATS handlers — nothing a client publishes can
+// change a group — so memStore satisfies the interface and does nothing.
+func (s *memStore) GetAllGroups() ([]models.Group, error) { return nil, nil }
+func (s *memStore) GetGroup(name string) (models.Group, error) {
+	return models.Group{}, errors.New("group not found")
+}
+func (s *memStore) SaveGroup(group models.Group) error                   { return nil }
+func (s *memStore) DeleteGroup(name string) error                        { return nil }
+func (s *memStore) RenameGroup(oldName, newName string) error            { return nil }
+func (s *memStore) SetHostGroups(hostname string, groups []string) error { return nil }
 
 type errMissing struct{}
 

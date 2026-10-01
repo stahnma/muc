@@ -308,6 +308,555 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     }
 
+    // ---------------------------------------------------------------------
+    // Groups
+    //
+    // A group is server-side bookkeeping: a named set of hostnames the
+    // dashboard can act on at once. Nothing about it reaches a host, and a
+    // host does not know which groups it is in.
+    //
+    // Membership is deliberately not part of the /api/systems payload. It is
+    // server-owned and changes by hand a few times a year, while a system
+    // record is overwritten by its host every few minutes; keeping them apart
+    // means a check-in can never clobber a group. The dashboard reads
+    // /api/groups once at load and inverts it here.
+    // ---------------------------------------------------------------------
+
+    // The sentinel for "hosts in no group at all". A real group name can never
+    // collide with it, because the API rejects "/" in a name.
+    const UNGROUPED = "/ungrouped";
+
+    let groupsData = [];
+    let groupFilter = "";
+    let lastGroupReport = null;
+    // Which group's reboot checkbox is ticked. Held outside the DOM for the
+    // same reason armedReboots is: the bar is re-rendered whenever a host
+    // checks in, and a tick that only lived in the markup would be lost.
+    const armedGroupReboots = new Set();
+    // A host's part-edited group selection, held across the re-renders that an
+    // unrelated check-in causes. Without this, ticking two boxes and having a
+    // payload land in between silently discards the first tick.
+    const pendingGroupEdits = new Map();
+
+    const GROUP_CHECK_IN_LABEL = "🔄 Check in all";
+    const GROUP_UPDATE_LABEL = "⬇️ Run updates";
+    const GROUP_REBOOT_LABEL = "⏻ Reboot group";
+
+    // Ask the server for the groups. Like fetchFeatures, a failure here is not
+    // fatal: the dashboard renders as a plain ungrouped list.
+    function fetchGroups() {
+        return fetch("/api/groups")
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch groups: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then((data) => {
+                groupsData = Array.isArray(data) ? data : [];
+                // A group that has gone away must not keep filtering the table
+                // down to nothing.
+                if (groupFilter && groupFilter !== UNGROUPED && !findGroup(groupFilter)) {
+                    groupFilter = "";
+                }
+            })
+            .catch((error) => {
+                console.warn("Could not read groups:", error);
+                groupsData = [];
+            });
+    }
+
+    // Group names are compared without regard to case, exactly as the server
+    // compares them, so a chip always finds the group it was drawn from.
+    function sameGroupName(a, b) {
+        return String(a).toLowerCase() === String(b).toLowerCase();
+    }
+
+    function findGroup(name) {
+        return groupsData.find((g) => g && sameGroupName(g.name, name)) || null;
+    }
+
+    function groupMembers(name) {
+        const group = findGroup(name);
+        return (group && Array.isArray(group.members)) ? group.members : [];
+    }
+
+    // The reverse index, computed rather than stored. At this scale it is a
+    // handful of array scans, and a second persisted index would be one more
+    // thing that can disagree with the first.
+    function groupsForHost(hostname) {
+        return groupsData
+            .filter((g) => g && Array.isArray(g.members) && g.members.includes(hostname))
+            .map((g) => g.name);
+    }
+
+    // Derived groups are computed by the server from what hosts report —
+    // os:fedora, pkg:rpm, arch:x86_64, state:needs-reboot. They are told apart
+    // by the flag rather than by the prefix, so the naming stays the server's
+    // business.
+    function isDerived(group) {
+        return !!(group && group.derived);
+    }
+
+    function manualGroups() {
+        return groupsData.filter((g) => !isDerived(g));
+    }
+
+    function derivedGroups() {
+        return groupsData.filter(isDerived);
+    }
+
+    // Only the hand-made groups. Derived membership is not a thing anyone
+    // chose, so it is not shown as a property of the host in the table, and
+    // "Ungrouped" has to mean "not filed anywhere by hand" — otherwise it
+    // would always be empty, since every host is in several derived groups.
+    function manualGroupsForHost(hostname) {
+        return manualGroups()
+            .filter((g) => Array.isArray(g.members) && g.members.includes(hostname))
+            .map((g) => g.name);
+    }
+
+    function filterByGroup(systems) {
+        if (!groupFilter) return systems;
+        if (groupFilter === UNGROUPED) {
+            return systems.filter((s) => s && manualGroupsForHost(s.hostname).length === 0);
+        }
+        const members = groupMembers(groupFilter);
+        return systems.filter((s) => s && members.includes(s.hostname));
+    }
+
+    // Members of the selected group that have no row in the table: a host that
+    // has never checked in, or one whose row was deleted. They are named
+    // rather than silently dropped, because "7 members, 5 rows" with nothing
+    // to explain it is the kind of thing that costs an afternoon.
+    function unknownMembers(name) {
+        if (!name || name === UNGROUPED) return [];
+        const known = new Set(systemsData.map((s) => s && s.hostname));
+        return groupMembers(name).filter((m) => !known.has(m));
+    }
+
+    // The small group labels drawn beside a hostname. They go inside the
+    // existing cell on purpose: the table's colspan is hardcoded in three
+    // places and its header is hand-written, so a new column is a much larger
+    // change than it looks.
+    function groupChips(hostname) {
+        // Deliberately not the derived ones: os:fedora and arch:x86_64 beside
+        // every hostname would restate the OS and Architecture columns on
+        // every row. The derived groups are useful as filters, not as labels.
+        const names = manualGroupsForHost(hostname);
+        if (!names.length) return '';
+        return ' ' + names
+            .map((n) => `<span class="host-group-chip">${escapeHtml(n)}</span>`)
+            .join('');
+    }
+
+    function renderGroupBar() {
+        const bar = document.getElementById("group-bar");
+        if (!bar) return;
+
+        const ungroupedCount = systemsData.filter((s) => s && manualGroupsForHost(s.hostname).length === 0).length;
+
+        const chip = (group) => {
+            const active = sameGroupName(groupFilter, group.name);
+            const derived = isDerived(group);
+            return `<button class="group-chip${derived ? ' derived' : ''}${active ? ' active' : ''}" ` +
+                `data-filter="${escapeHtml(group.name)}"` +
+                (derived ? ` title="Derived from what the hosts report. Membership cannot be edited."` : '') +
+                `>${derived ? '◆' : ''}${escapeHtml(group.name)} ` +
+                `<span class="group-count">${(group.members || []).length}</span></button>`;
+        };
+
+        const chips = [
+            `<button class="group-chip${groupFilter === "" ? ' active' : ''}" data-filter="">All hosts <span class="group-count">${systemsData.length}</span></button>`,
+        ];
+        // Derived first, then the hand-made ones: the derived set is a fixed
+        // reading of the fleet, while the groups below it are the ones someone
+        // decided on.
+        derivedGroups().forEach((group) => chips.push(chip(group)));
+        manualGroups().forEach((group) => chips.push(chip(group)));
+        if (ungroupedCount > 0) {
+            chips.push(
+                `<button class="group-chip${groupFilter === UNGROUPED ? ' active' : ''}" data-filter="${UNGROUPED}" ` +
+                `title="Hosts in no hand-made group. Derived groups do not count — every host is in several.">` +
+                `Ungrouped <span class="group-count">${ungroupedCount}</span></button>`
+            );
+        }
+        chips.push(`<button class="group-chip new-group-btn" id="new-group-btn">+ New group</button>`);
+
+        bar.innerHTML = chips.join('');
+        renderGroupActions();
+    }
+
+    function renderGroupActions() {
+        const el = document.getElementById("group-actions");
+        if (!el) return;
+
+        const group = (groupFilter && groupFilter !== UNGROUPED) ? findGroup(groupFilter) : null;
+        if (!group) {
+            el.innerHTML = '';
+            el.style.display = 'none';
+            renderGroupReport();
+            return;
+        }
+
+        const members = group.members || [];
+        const ghosts = unknownMembers(group.name);
+        const ghostNote = ghosts.length
+            ? ` <span class="group-ghost-note" title="${escapeHtml(ghosts.join(', '))}">${ghosts.length} not currently known</span>`
+            : '';
+
+        const updateBtn = features.remote_updates
+            ? `<button class="group-action-btn" data-group-action="update"${members.length ? '' : ' disabled'}>${GROUP_UPDATE_LABEL}</button>`
+            : '';
+
+        // The same arm-checkbox the per-host reboot uses, and it looks
+        // identical on purpose: a group reboot should feel like the control
+        // the operator already knows rather than a new one to learn.
+        const armed = armedGroupReboots.has(group.name.toLowerCase());
+        const rebootControls = features.remote_reboot
+            ? `<span class="reboot-controls">
+                    <label class="reboot-arm${members.length ? '' : ' disabled'}">
+                        <input type="checkbox" class="group-reboot-arm-checkbox"${armed ? ' checked' : ''}${members.length ? '' : ' disabled'}>
+                        Confirm reboot
+                    </label>
+                    <button class="group-action-btn" data-group-action="reboot"${armed ? '' : ' disabled'}>${GROUP_REBOOT_LABEL}</button>
+               </span>`
+            : '';
+
+        // A derived group has nothing to rename or delete: it exists for as
+        // long as a host matches it and not a moment longer. Offering the
+        // controls and refusing them would be worse than not offering them.
+        const derived = isDerived(group);
+        const editButtons = derived
+            ? '<span class="group-derived-note" title="Membership is computed from what the hosts report, so it cannot be edited. The group disappears when nothing matches it.">derived from host facts</span>'
+            : `<button class="group-edit-btn" data-group-edit="rename" title="Rename this group">Rename</button>
+               <button class="group-edit-btn" data-group-edit="delete" title="Delete this group">Delete group</button>`;
+
+        el.style.display = '';
+        el.innerHTML = `
+            <div class="group-action-summary">
+                <strong>${derived ? '◆' : ''}${escapeHtml(group.name)}</strong>
+                <span class="group-member-count">${members.length} ${members.length === 1 ? 'host' : 'hosts'}</span>${ghostNote}
+            </div>
+            <div class="group-action-buttons">
+                <button class="group-action-btn" data-group-action="checkin"${members.length ? '' : ' disabled'}>${GROUP_CHECK_IN_LABEL}</button>
+                ${updateBtn}
+                ${rebootControls}
+                ${editButtons}
+            </div>
+        `;
+        renderGroupReport();
+    }
+
+    // The per-host outcomes of the last group action.
+    //
+    // Not an alert(): a reboot that skipped two hosts is something the operator
+    // needs to keep reading while they go and look, and a modal is gone the
+    // moment it is dismissed. The existing alerts are for a single host, where
+    // there is exactly one sentence to say.
+    function renderGroupReport() {
+        const el = document.getElementById("group-action-report");
+        if (!el) return;
+
+        if (!lastGroupReport) {
+            el.innerHTML = '';
+            el.style.display = 'none';
+            return;
+        }
+
+        const r = lastGroupReport;
+        const verb = r.action === 'checkin' ? 'Check-in' : r.action === 'update' ? 'Update' : 'Reboot';
+        const parts = [];
+        if (r.accepted) parts.push(`${r.accepted} accepted`);
+        if (r.skipped) parts.push(`${r.skipped} skipped`);
+        if (r.failed) parts.push(`${r.failed} failed`);
+        const summary = parts.length ? parts.join(' · ') : 'nothing to do';
+
+        const lines = (r.results || []).map((res) => {
+            const ghost = res.code === 'unknown_host' ? ' ghost' : '';
+            return `<li>
+                <span class="outcome-pill ${escapeHtml(res.outcome)}">${escapeHtml(res.outcome)}</span>
+                <span class="outcome-host${ghost}">${escapeHtml(res.hostname)}</span>
+                ${res.reason ? `<span class="outcome-reason">${escapeHtml(res.reason)}</span>` : ''}
+            </li>`;
+        }).join('');
+
+        el.style.display = '';
+        el.innerHTML = `
+            <div class="group-report-head">
+                <span>${verb} on <strong>${escapeHtml(r.group)}</strong> — ${escapeHtml(summary)}</span>
+                <button class="group-report-dismiss" title="Dismiss">✕</button>
+            </div>
+            ${lines ? `<ul class="group-report-list">${lines}</ul>` : ''}
+        `;
+    }
+
+    function handleGroupAction(action) {
+        const group = findGroup(groupFilter);
+        if (!group) return;
+
+        if (action === 'reboot' && !armedGroupReboots.has(group.name.toLowerCase())) {
+            // The button should have been disabled; treat it as if it were.
+            return;
+        }
+
+        document.querySelectorAll('#group-actions .group-action-btn').forEach((b) => { b.disabled = true; });
+
+        fetch(`/api/groups/${encodeURIComponent(group.name)}/${action}`, { method: 'POST' })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Group ${action} failed: ${response.status}`);
+                }
+                lastGroupReport = body;
+                armedGroupReboots.delete(group.name.toLowerCase());
+
+                // Seed the per-host pending state for everything that was
+                // accepted, so each row shows the same spinner, timeout and
+                // WebSocket-driven release it would for a single-host action.
+                // A group action is N button presses and should look like it.
+                (body.results || []).forEach((res) => {
+                    if (res.outcome !== 'accepted') return;
+                    const system = systemsData.find((s) => s && s.hostname === res.hostname);
+                    if (action === 'checkin') {
+                        markCheckInPending(res.hostname, (system && system.updates_checked_at) || '');
+                    } else if (action === 'reboot') {
+                        markRebootPending(res.hostname, (system && system.last_reboot && system.last_reboot.id) || '');
+                    }
+                });
+
+                renderSystems(Array.from(systemsData));
+            })
+            .catch((error) => {
+                console.error(`Group ${action} failed:`, error);
+                lastGroupReport = null;
+                renderGroupActions();
+                alert(`Could not run ${action} on ${group.name}:\n\n${error.message}`);
+            });
+    }
+
+    function handleNewGroup() {
+        const name = prompt('Name for the new group:');
+        if (name === null || !name.trim()) return;
+
+        fetch('/api/groups', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name.trim() }),
+        })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Could not create the group: ${response.status}`);
+                }
+                return fetchGroups();
+            })
+            .then(() => renderSystems(Array.from(systemsData)))
+            .catch((error) => alert(`Could not create the group:\n\n${error.message}`));
+    }
+
+    function handleRenameGroup() {
+        const group = findGroup(groupFilter);
+        if (!group) return;
+        const name = prompt(`Rename "${group.name}" to:`, group.name);
+        if (name === null || !name.trim() || name.trim() === group.name) return;
+
+        fetch(`/api/groups/${encodeURIComponent(group.name)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name.trim() }),
+        })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Rename failed: ${response.status}`);
+                }
+                groupFilter = body.name || name.trim();
+                return fetchGroups();
+            })
+            .then(() => renderSystems(Array.from(systemsData)))
+            .catch((error) => alert(`Could not rename the group:\n\n${error.message}`));
+    }
+
+    function handleDeleteGroup() {
+        const group = findGroup(groupFilter);
+        if (!group) return;
+        const count = (group.members || []).length;
+        // A group is a label. Say so, so nobody reads this as deleting hosts.
+        if (!confirm(`Delete the group "${group.name}"?\n\n` +
+            `${count} ${count === 1 ? 'host is' : 'hosts are'} in it. They are not deleted, only the group is.`)) {
+            return;
+        }
+
+        fetch(`/api/groups/${encodeURIComponent(group.name)}`, { method: 'DELETE' })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Delete failed: ${response.status}`);
+                }
+                groupFilter = '';
+                lastGroupReport = null;
+                return fetchGroups();
+            })
+            .then(() => renderSystems(Array.from(systemsData)))
+            .catch((error) => alert(`Could not delete the group:\n\n${error.message}`));
+    }
+
+    // The per-host editor in the expanded row. Groups are a property of the
+    // host rather than an action on it, so this sits with the system
+    // information and not in the actions footer.
+    function groupEditorHTML(hostname) {
+        const manual = manualGroups();
+        const selected = pendingGroupEdits.get(hostname) || new Set(manualGroupsForHost(hostname));
+        const dirty = pendingGroupEdits.has(hostname);
+
+        // The derived memberships are shown but not offered as checkboxes: a
+        // host joins os:fedora by being a Fedora box, and a tickbox that
+        // reverted on the next read would be worse than no tickbox.
+        const derivedNames = derivedGroups()
+            .filter((g) => Array.isArray(g.members) && g.members.includes(hostname))
+            .map((g) => g.name);
+        const derivedHTML = derivedNames.length
+            ? `<div class="group-editor-derived">
+                <span class="group-editor-derived-label">Derived</span>
+                ${derivedNames.map((n) => `<span class="host-group-chip derived">◆${escapeHtml(n)}</span>`).join('')}
+            </div>`
+            : '';
+
+        const boxes = manual.length
+            ? manual.map((group) => `
+                <label class="group-editor-option">
+                    <input type="checkbox" class="group-member-checkbox"
+                           data-hostname="${escapeHtml(hostname)}"
+                           data-group="${escapeHtml(group.name)}"${selected.has(group.name) ? ' checked' : ''}>
+                    ${escapeHtml(group.name)}
+                </label>`).join('')
+            : '<span class="group-editor-empty">No groups of your own yet. Create one from the bar above the table.</span>';
+
+        return `<div class="group-editor">
+            <h4>Groups</h4>
+            <div class="group-editor-options">${boxes}</div>
+            ${manual.length ? `<div class="group-editor-actions">
+                <button class="save-groups-btn" data-hostname="${escapeHtml(hostname)}"${dirty ? '' : ' disabled'}>Save groups</button>
+                ${dirty ? '<span class="group-editor-dirty">unsaved</span>' : ''}
+            </div>` : ''}
+            ${derivedHTML}
+        </div>`;
+    }
+
+    function handleGroupMemberToggle(event) {
+        const checkbox = event.currentTarget;
+        const hostname = checkbox.dataset.hostname;
+        const group = checkbox.dataset.group;
+        if (!hostname || !group) return;
+
+        const selected = pendingGroupEdits.get(hostname) || new Set(manualGroupsForHost(hostname));
+        if (checkbox.checked) {
+            selected.add(group);
+        } else {
+            selected.delete(group);
+        }
+        pendingGroupEdits.set(hostname, selected);
+
+        const editor = checkbox.closest('.group-editor');
+        const save = editor && editor.querySelector('.save-groups-btn');
+        if (save) save.disabled = false;
+    }
+
+    function handleSaveGroups(event) {
+        const button = event.currentTarget;
+        const hostname = button.dataset.hostname;
+        if (!hostname) return;
+
+        const selected = pendingGroupEdits.get(hostname);
+        if (!selected) return;
+
+        button.disabled = true;
+        fetch(`/api/systems/${encodeURIComponent(hostname)}/groups`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groups: Array.from(selected) }),
+        })
+            .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
+            .then(({ response, body }) => {
+                if (!response.ok) {
+                    throw new Error(body.error || `Could not save groups: ${response.status}`);
+                }
+                pendingGroupEdits.delete(hostname);
+                return fetchGroups();
+            })
+            .then(() => renderSystems(Array.from(systemsData)))
+            .catch((error) => {
+                button.disabled = false;
+                console.error(`Failed to save groups for ${hostname}:`, error);
+                alert(`Could not save groups for ${hostname}:\n\n${error.message}`);
+            });
+    }
+
+    // A collapsed row drops its half-finished edit, for the same reason it
+    // drops a ticked reboot confirmation: what is no longer on screen should
+    // not still be pending.
+    function discardGroupEdit(hostname) {
+        pendingGroupEdits.delete(hostname);
+    }
+
+    // Delegated listeners on the bar, the action strip and the report. They
+    // are attached once at boot rather than on every render, because all three
+    // are rebuilt whenever any host checks in.
+    function initGroupControls() {
+        const bar = document.getElementById("group-bar");
+        if (bar) {
+            bar.addEventListener('click', (event) => {
+                if (event.target.closest('#new-group-btn')) {
+                    handleNewGroup();
+                    return;
+                }
+                const chip = event.target.closest('.group-chip');
+                if (!chip || chip.dataset.filter === undefined) return;
+                groupFilter = chip.dataset.filter;
+                lastGroupReport = null;
+                armedGroupReboots.clear();
+                renderSystems(Array.from(systemsData));
+            });
+        }
+
+        const actions = document.getElementById("group-actions");
+        if (actions) {
+            actions.addEventListener('click', (event) => {
+                const edit = event.target.closest('[data-group-edit]');
+                if (edit) {
+                    if (edit.dataset.groupEdit === 'rename') handleRenameGroup();
+                    else handleDeleteGroup();
+                    return;
+                }
+                const btn = event.target.closest('[data-group-action]');
+                if (btn && !btn.disabled) handleGroupAction(btn.dataset.groupAction);
+            });
+            actions.addEventListener('change', (event) => {
+                const checkbox = event.target.closest('.group-reboot-arm-checkbox');
+                if (!checkbox) return;
+                const group = findGroup(groupFilter);
+                if (!group) return;
+                if (checkbox.checked) {
+                    armedGroupReboots.add(group.name.toLowerCase());
+                } else {
+                    armedGroupReboots.delete(group.name.toLowerCase());
+                }
+                const button = actions.querySelector('[data-group-action="reboot"]');
+                if (button) button.disabled = !checkbox.checked;
+            });
+        }
+
+        const report = document.getElementById("group-action-report");
+        if (report) {
+            report.addEventListener('click', (event) => {
+                if (!event.target.closest('.group-report-dismiss')) return;
+                lastGroupReport = null;
+                renderGroupReport();
+            });
+        }
+    }
+
     // Fetch and render systems list
     function fetchSystems() {
         fetch("/api/systems")
@@ -731,6 +1280,34 @@ document.addEventListener("DOMContentLoaded", () => {
             systems = [];
         }
 
+        // The chip bar counts the whole fleet, so it is drawn from the
+        // unfiltered list before the filter is applied below.
+        renderGroupBar();
+
+        // One row per host, always: the table is filtered rather than divided
+        // into sections. A host in several groups would otherwise be drawn
+        // several times, and every document.querySelector('[data-hostname=...]')
+        // in this file would then drive only the first copy.
+        const unfilteredCount = systems.length;
+        systems = filterByGroup(systems);
+
+        // An empty group is a different thing from an empty fleet, and saying
+        // "no systems have checked in yet" under a group whose members simply
+        // have no rows yet would be a lie.
+        if (systems.length === 0 && unfilteredCount > 0) {
+            const label = groupFilter === UNGROUPED ? 'Ungrouped' : groupFilter;
+            systemsTable.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                        <div style="font-size: 16px; margin-bottom: 8px;">\u{1F50D}</div>
+                        <div style="font-weight: 500; margin-bottom: 4px;">No hosts to show in ${escapeHtml(label)}</div>
+                        <div style="font-size: 13px; opacity: 0.8;">Its members may not have checked in yet</div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
         // Show message if no systems exist yet
         if (systems.length === 0) {
             systemsTable.innerHTML = `
@@ -788,7 +1365,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><span class="chevron">▶</span></td>
-                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${rebootIndicator(system)}</td>
+                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${rebootIndicator(system)}${groupChips(system.hostname)}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
@@ -1491,14 +2068,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 <ul>${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
             </div>`
             : '';
-        const systemInfoHTML = infoRows.length
+        const systemInfoHTML = (infoRows.length
             ? `<div class="system-info">
                 <h4>System information</h4>
                 <dl>
                     ${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
                 </dl>
             </div>`
-            : '';
+            : '') + groupEditorHTML(hostname);
 
         if (data.pending_updates && data.pending_updates.length > 0) {
             const updatesList = data.pending_updates
@@ -1580,6 +2157,15 @@ document.addEventListener("DOMContentLoaded", () => {
             rebootBtn.addEventListener('click', handleReboot);
         }
 
+        // Attach the group editor
+        detailsContent.querySelectorAll('.group-member-checkbox').forEach((box) => {
+            box.addEventListener('change', handleGroupMemberToggle);
+        });
+        const saveGroupsBtn = detailsContent.querySelector('.save-groups-btn');
+        if (saveGroupsBtn) {
+            saveGroupsBtn.addEventListener('click', handleSaveGroups);
+        }
+
         restoreOutputView(hostname, detailsContent, data.last_update_run);
         seedLiveOutput(hostname, data.last_update_run);
     }
@@ -1641,6 +2227,7 @@ document.addEventListener("DOMContentLoaded", () => {
             chevron.textContent = "▶";
             expandedSystems.delete(hostname); // Remove from expanded set
             disarmReboot(hostname); // A closed row is not a confirmed one
+            discardGroupEdit(hostname); // nor does it hold an unsaved edit
         }
     });
 
@@ -1708,7 +2295,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initial fetch and WebSocket connection. Features first, so the first
     // render of an expanded row already knows whether to offer the update
     // button; the fetch is not allowed to hold up the systems list for long.
-    fetchFeatures().finally(fetchSystems);
+    initGroupControls();
+    Promise.all([fetchFeatures(), fetchGroups()]).finally(fetchSystems);
     initWebSocket();
     
     // Set up periodic update of relative timestamps (every 30 seconds)

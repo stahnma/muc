@@ -187,7 +187,15 @@ func (s *BboltStorage) DeleteSystem(hostname string) error {
 			return fmt.Errorf("system with hostname '%s' not found", hostname)
 		}
 
-		return bucket.Delete([]byte(hostname))
+		if err := bucket.Delete([]byte(hostname)); err != nil {
+			return err
+		}
+
+		// Drop the host from every group it was in, in the same transaction.
+		// A deleted host that stayed in its groups would come back as a member
+		// nothing can act on, and would quietly pad the member count on every
+		// group action from then on.
+		return removeHostFromGroups(tx, hostname)
 	})
 
 	if err != nil {
