@@ -2,11 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"server/models"
+	"slices"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -16,6 +20,13 @@ import (
 type fakeStorage struct {
 	systems []models.System
 	err     error
+
+	// groups is keyed by the group's name folded to lower case, mirroring what
+	// the bbolt store does with its keys.
+	groups map[string]models.Group
+	// groupErr, when set, fails every group read and write, for the tests that
+	// need the storage layer to break.
+	groupErr error
 }
 
 func (f *fakeStorage) SaveSystem(hostname string, system models.System) error { return nil }
@@ -36,6 +47,100 @@ func (f *fakeStorage) GetAllSystems() ([]models.System, error) { return f.system
 func (f *fakeStorage) DeleteSystem(hostname string) error      { return f.err }
 func (f *fakeStorage) SubscribeToUpdates() <-chan models.System {
 	return make(chan models.System)
+}
+
+func (f *fakeStorage) GetAllGroups() ([]models.Group, error) {
+	if f.groupErr != nil {
+		return nil, f.groupErr
+	}
+	groups := []models.Group{}
+	for _, g := range f.groups {
+		groups = append(groups, g)
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		return strings.ToLower(groups[i].Name) < strings.ToLower(groups[j].Name)
+	})
+	return groups, nil
+}
+
+func (f *fakeStorage) GetGroup(name string) (models.Group, error) {
+	if f.groupErr != nil {
+		return models.Group{}, f.groupErr
+	}
+	group, ok := f.groups[strings.ToLower(strings.TrimSpace(name))]
+	if !ok {
+		return models.Group{}, errNotFound{}
+	}
+	return group, nil
+}
+
+func (f *fakeStorage) SaveGroup(group models.Group) error {
+	if f.groupErr != nil {
+		return f.groupErr
+	}
+	if f.groups == nil {
+		f.groups = map[string]models.Group{}
+	}
+	sort.Strings(group.Members)
+	f.groups[strings.ToLower(strings.TrimSpace(group.Name))] = group
+	return nil
+}
+
+func (f *fakeStorage) DeleteGroup(name string) error {
+	if f.groupErr != nil {
+		return f.groupErr
+	}
+	key := strings.ToLower(strings.TrimSpace(name))
+	if _, ok := f.groups[key]; !ok {
+		return errNotFound{}
+	}
+	delete(f.groups, key)
+	return nil
+}
+
+func (f *fakeStorage) RenameGroup(oldName, newName string) error {
+	if f.groupErr != nil {
+		return f.groupErr
+	}
+	oldKey := strings.ToLower(strings.TrimSpace(oldName))
+	newKey := strings.ToLower(strings.TrimSpace(newName))
+	group, ok := f.groups[oldKey]
+	if !ok {
+		return errNotFound{}
+	}
+	if oldKey != newKey {
+		if _, taken := f.groups[newKey]; taken {
+			return errors.New("group already exists")
+		}
+		delete(f.groups, oldKey)
+	}
+	group.Name = newName
+	f.groups[newKey] = group
+	return nil
+}
+
+func (f *fakeStorage) SetHostGroups(hostname string, groups []string) error {
+	if f.groupErr != nil {
+		return f.groupErr
+	}
+	wanted := map[string]bool{}
+	for _, name := range groups {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if _, ok := f.groups[key]; !ok {
+			return errNotFound{}
+		}
+		wanted[key] = true
+	}
+	for key, group := range f.groups {
+		members := slices.DeleteFunc(slices.Clone(group.Members), func(m string) bool { return m == hostname })
+		if wanted[key] {
+			members = append(members, hostname)
+		}
+		sort.Strings(members)
+		group.Members = members
+		f.groups[key] = group
+	}
+	return nil
 }
 
 type errNotFound struct{}
@@ -215,52 +320,122 @@ func TestSystemSummaryCoversFreshnessFields(t *testing.T) {
 	}
 }
 
+// The three fakes below stand in for the NATS connection.
+//
+// They are mutex-guarded because a group action calls them from one goroutine
+// per member at once; without it `go test -race` fails on the call counter
+// rather than on anything the production code did wrong.
+//
+// perHost lets one test produce accepted, skipped and failed answers in a
+// single batch, which is the case worth pinning — a group where every host
+// agrees proves very little.
+
 // fakeUpdater stands in for the NATS connection in the update-request tests.
 type fakeUpdater struct {
+	mu       sync.Mutex
 	ack      models.UpdateAck
 	err      error
+	perHost  map[string]fakeAnswer
 	hostname string // recorded from the last call
 	by       string
 	calls    int
+	seen     []string
+	hook     func(hostname string)
+}
+
+// fakeAnswer is one host's scripted reply, for the per-host maps.
+type fakeAnswer struct {
+	accepted bool
+	reason   string
+	id       string
+	command  string
+	err      error
 }
 
 func (f *fakeUpdater) RequestUpdate(hostname, requestedBy string) (models.UpdateAck, error) {
+	if f.hook != nil {
+		f.hook(hostname)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.hostname = hostname
 	f.by = requestedBy
+	f.seen = append(f.seen, hostname)
+	if a, ok := f.perHost[hostname]; ok {
+		return models.UpdateAck{ID: a.id, Hostname: hostname, Accepted: a.accepted, Reason: a.reason, Command: a.command}, a.err
+	}
 	return f.ack, f.err
+}
+
+func (f *fakeUpdater) hostsSeen() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.seen)
+}
+
+func (f *fakeUpdater) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 // fakeCheckIner stands in for the NATS connection in the check-in tests.
 type fakeCheckIner struct {
+	mu       sync.Mutex
 	ack      models.CheckInAck
 	err      error
+	perHost  map[string]fakeAnswer
 	hostname string // recorded from the last call
 	by       string
 	calls    int
 }
 
 func (f *fakeCheckIner) RequestCheckIn(hostname, requestedBy string) (models.CheckInAck, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.hostname = hostname
 	f.by = requestedBy
+	if a, ok := f.perHost[hostname]; ok {
+		return models.CheckInAck{ID: a.id, Hostname: hostname, Accepted: a.accepted, Reason: a.reason}, a.err
+	}
 	return f.ack, f.err
+}
+
+func (f *fakeCheckIner) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 // fakeRebooter stands in for the NATS connection in the reboot tests.
 type fakeRebooter struct {
+	mu       sync.Mutex
 	ack      models.RebootAck
 	err      error
+	perHost  map[string]fakeAnswer
 	hostname string // recorded from the last call
 	by       string
 	calls    int
 }
 
 func (f *fakeRebooter) RequestReboot(hostname, requestedBy string) (models.RebootAck, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.hostname = hostname
 	f.by = requestedBy
+	if a, ok := f.perHost[hostname]; ok {
+		return models.RebootAck{ID: a.id, Hostname: hostname, Accepted: a.accepted, Reason: a.reason}, a.err
+	}
 	return f.ack, f.err
+}
+
+func (f *fakeRebooter) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 func postReboot(handler http.HandlerFunc, hostname string) *httptest.ResponseRecorder {

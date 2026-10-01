@@ -80,6 +80,8 @@ Configuration is powered by [Viper](https://github.com/spf13/viper).
 | `remote_updates` | `MUC_REMOTE_UPDATES` | `false` | Allow the dashboard to run updates on hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard)) |
 | `remote_reboot` | `MUC_REMOTE_REBOOT` | `false` | Allow the dashboard to reboot hosts that have opted in (see [Rebooting a host from the dashboard](#rebooting-a-host-from-the-dashboard)) |
 
+Grouping hosts needs no configuration at all — see [Grouping hosts](#grouping-hosts). The group routes are always available; a group update or reboot is gated by the same `remote_updates` / `remote_reboot` flags as its single-host counterpart.
+
 **CLI Flags:**
 - `--dev`: Enable dev mode (debug logging enabled)
 - `--json`: Output logs in JSON format (default: text format)
@@ -339,6 +341,7 @@ The web dashboard provides:
 - Tailnet status for hosts that use Tailscale (see below)
 - A check-in button on every host, to refresh a row now rather than at its next poll (see [Asking a host to check in](#asking-a-host-to-check-in))
 - An update button for hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard))
+- Group chips that filter the table, and run check-in, updates or a reboot across a whole group at once — groups you make yourself, plus derived ones like `os:fedora`, `pkg:rpm` and `state:needs-reboot` that the server works out for itself (see [Grouping hosts](#grouping-hosts))
 
 ### Tailnet status
 
@@ -659,6 +662,221 @@ failed** with the command's own error, and the control comes back.
 
 The request is logged on the host before the reboot, with the address it came
 from, so `journalctl -u muc-client -b -1` says who did it.
+
+## Grouping hosts
+
+Patching a dozen machines one row at a time is the thing this dashboard was
+worst at. A **group** is a named set of hosts that the three per-host
+actions — check in, update, reboot — can be run against all at once.
+
+There are two kinds. **Ordinary groups** are the ones you make and fill
+yourself: `prod`, `the noisy ones in the basement`. **Derived groups** are
+computed by the server from what the hosts already report — every Fedora box,
+everything rpm-based, everything needing a reboot — and need no maintenance at
+all. They behave identically once they exist; only where their membership
+comes from differs.
+
+Groups are kept by the server and managed from the dashboard. **Nothing changes
+on a host**: there is no key in `/etc/muc/client.yml`, no client to restart, and
+a host is never told which groups it is in. That is deliberate. A group is a
+convenience for whoever is doing the patching, not a property of the machine,
+and putting it in the client config would make it one more thing to deploy and
+keep in step with a dashboard that can already see every host anyway.
+
+Nothing has to be configured on the server either. The group routes are always
+on; what stays gated is what was already gated — a group update still needs
+`remote_updates`, and a group reboot still needs `remote_reboot`.
+
+A host can be in as many groups as you like. `web01` can be in `prod` and `web`
+and `rocky10` at once, and show up under each.
+
+### Using them
+
+The bar above the table holds a chip per group. Clicking one filters the table
+to its members and reveals the actions for that group; clicking **All hosts**
+puts it back. **Ungrouped** is there too, which is the quickest way to find a
+host you forgot to file.
+
+The table itself stays flat — one row per host, however many groups it is in —
+and each row carries its groups as small labels beside the hostname.
+
+To put a host in a group, expand its row: the **Groups** block in the details
+holds a checkbox per group. New groups are made from **+ New group** on the bar,
+which is a separate act on purpose: a typo that founds a group of one is much
+harder to notice afterwards than a typo that is simply refused.
+
+### Derived groups
+
+Some groups are not worth maintaining by hand, because the server can already
+see the answer. "Every Fedora box" and "everything rpm-based" are facts about
+the fleet rather than decisions about it, so MUC derives them for you.
+
+They appear in the bar marked with a ◆ and a dashed outline, ahead of your own
+groups:
+
+| Group | Members |
+|---|---|
+| `os:fedora`, `os:debian`, `os:rocky`, `os:ubuntu`, … | one per distribution actually present |
+| `pkg:rpm`, `pkg:deb`, `pkg:pacman`, `pkg:nix`, `pkg:brew`, … | the package family, which is what `all rpm` and `all deb` mean |
+| `arch:x86_64`, `arch:aarch64` | one per architecture present |
+| `state:needs-reboot`, `state:has-updates` | what the fleet is currently reporting |
+
+A derived group exists only while something matches it. Boot a Debian machine
+and `pkg:deb` appears; retire the last one and it is gone. There is nothing to
+create and nothing to clean up, which is the point — a list of every
+distribution MUC has heard of would be noise, so the bar shows the fleet you
+actually have.
+
+Anything you can do to a group you can do to a derived one:
+
+```bash
+curl -X POST http://muc-server:8080/api/groups/pkg:rpm/update
+curl -X POST http://muc-server:8080/api/groups/state:needs-reboot/reboot
+```
+
+That second one is worth noticing. A derived group's members are worked out
+when the action runs, not when the page was drawn, so "reboot everything that
+needs a reboot" means what is true at the moment you press it.
+
+**They cannot be edited.** There is no renaming, no deleting, and no adding a
+host — a machine joins `os:fedora` by being a Fedora box, and the dashboard
+draws the controls accordingly rather than offering them and then refusing. The
+expanded row shows a host's derived groups as plain labels beside its editable
+ones. If you want a hand-picked set, make an ordinary group.
+
+The `:` in the name is what keeps the two kinds apart, so it is reserved: an
+ordinary group name may not contain one. Without that, a hand-made `os:fedora`
+could sit beside the computed one and a group action would be ambiguous about
+which set of hosts it meant.
+
+The derived groups are also why **Ungrouped** means "in none of *your* groups".
+Every host is in several derived groups, so counting those would make it
+permanently empty and useless.
+
+#### Where the distribution comes from
+
+The package family is inferred from the OS string the host already reports —
+its own `PRETTY_NAME`, the same string the dashboard uses to pick a distro
+icon. Nothing has to be configured and nothing has to be upgraded: every host
+already checking in is grouped, including ones running an older client.
+
+The trade is that it is a matching table, in `server/models/derived.go`, and a
+distribution it does not recognise joins **no** `os:` or `pkg:` group at all —
+it still gets its `arch:` group, since the architecture is reported rather than
+guessed. That silence is deliberate. Guessing is how a host ends up in `all
+rpm` and gets handed a `dnf` command it cannot run; a distribution missing from
+the list is a one-line fix, and a wrong guess is an incident.
+
+SUSE is listed as `pkg:rpm`. It reaches rpm through zypper rather than dnf, but
+"which hosts take an rpm" has one answer, and the `upd` script picks the right
+manager per host regardless.
+
+### What a group action does
+
+All the members at once, not one after another. The fleet this serves is tens of
+hosts rather than thousands; running a group check-in in sequence would make it
+take minutes for no benefit, and the hosts enforce their own minimum gap between
+commands regardless. A group of fifty finishes in about as long as the slowest
+single host.
+
+**A member that cannot take the command is skipped, not an error.** One machine
+that has not opted into remote updates should not stop the other eleven being
+patched. Every member comes back with its own outcome, and the report under the
+action bar lists them:
+
+| Outcome | What it means |
+|---|---|
+| **accepted** | The host took the command. It reports back separately, exactly as it does for the single-host button. |
+| **skipped** | It was never a candidate: not opted in, no reboot pending, or not a host this server knows. |
+| **refused** | The host itself said no, and said why — "an update is already running on this host", say. |
+| **unreachable** | Nothing answered. The host is off, or its client no longer listens for that command. |
+| **failed** | The request broke for some other reason. |
+
+*Skipped* and *refused* are worth telling apart: the first is what the server
+knew before it sent anything, the second is what the host said back.
+
+A group reboot only reboots members that reported a pending reboot, which is
+what makes it safe to press straight after a group update — it reboots what
+needs it and leaves the rest alone. It uses the same **Confirm reboot** checkbox
+as the per-host control, for the same reason and with no extra dialog. Check-in
+and update have no checkbox; they are the ones you will press most often.
+
+Accepted hosts get the same ⏳ indicators in their rows as if you had pressed
+each button yourself, because that is all a group action is.
+
+### Members the server does not know
+
+A group can name a host that has never checked in, and it keeps naming a host
+whose row you delete. Both are intentional. Deleting a row is a tidying gesture
+— the dashboard says as much, "it will reappear when it checks in again" — so
+losing the grouping you did by hand would be a poor trade; and building a group
+before its machines exist is a reasonable way to work.
+
+Such a member shows in the group's count as "not currently known", and a group
+action skips it. To get rid of one for good:
+
+```bash
+curl -X DELETE http://muc-server:8080/api/groups/prod/members/retired01
+```
+
+### The same thing over the API
+
+```bash
+# make a group and fill it
+curl -X POST http://muc-server:8080/api/groups -d '{"name":"prod"}'
+curl -X PUT  http://muc-server:8080/api/groups/prod \
+     -d '{"members":["web01","web02","db01"]}'
+
+# run updates across it
+curl -X POST http://muc-server:8080/api/groups/prod/update
+```
+
+```json
+{
+  "group": "prod",
+  "action": "update",
+  "requested": 3,
+  "accepted": 2,
+  "skipped": 1,
+  "failed": 0,
+  "results": [
+    { "hostname": "db01", "outcome": "skipped", "code": "not_opted_in",
+      "reason": "This host has not opted into remote updates (set allow_remote_updates: true in its client config)" },
+    { "hostname": "web01", "outcome": "accepted", "id": "9f2c1b0a4d5e6f70" },
+    { "hostname": "web02", "outcome": "accepted", "id": "1a2b3c4d5e6f7081" }
+  ]
+}
+```
+
+The status is **200 whenever the group exists and the feature is enabled**, even
+when every member was skipped. The call was "fan this out and tell me what
+happened", and it did; no status code can summarise a dozen different answers,
+so it does not try. Read the body.
+
+Group names ignore case — `prod` and `Prod` are one group, and cannot both
+exist, because two chips that look alike and hold different hosts is the one
+mistake here that goes unnoticed.
+
+### How much this is trusted
+
+The earlier sections say that remote updates and reboots are a convenience for a
+trusted network, not an authorization boundary. That is still true and now it
+matters more: **the blast radius of a group action is the whole group.** One
+unauthenticated HTTP POST, from anything that can reach the dashboard, now
+reboots twelve machines instead of one.
+
+Nothing here changes who is allowed to do what — a host that has not opted in is
+still untouchable, and that remains the only real gate. But two things follow
+from it. Keep a group no larger than the thing you actually want to act on. And
+`remote_reboot` has no business being enabled anywhere the dashboard is
+reachable by something you do not trust.
+
+Every group action is logged at WARN with the group, the action, the address it
+came from and the counts, so "who rebooted production" is one `grep` away:
+
+```bash
+journalctl -u muc-server | grep "Group action"
+```
 
 ## Alternatives
 

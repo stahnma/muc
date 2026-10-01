@@ -15,9 +15,9 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/styles.css?v=14">
+    <link rel="stylesheet" href="/static/styles.css?v=15">
     <script src="/static/theme.js" defer></script>
-    <script src="/static/app.js?v=14" defer></script>
+    <script src="/static/app.js?v=15" defer></script>
      <script defer>
         document.addEventListener('DOMContentLoaded', () => {
             const table = document.querySelector('table');
@@ -62,6 +62,11 @@
         <button id="expand-all-btn">Expand All</button>
         <button id="collapse-all-btn">Collapse All</button>
     </div>
+    <!-- Groups. The bar filters the table below; picking one group reveals the
+         actions that apply to all of it, and the report of what they did. -->
+    <div id="group-bar" class="group-bar"></div>
+    <div id="group-actions" class="group-actions" style="display: none;"></div>
+    <div id="group-action-report" class="group-action-report" style="display: none;"></div>
     <table>
         <thead>
             <tr>

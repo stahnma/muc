@@ -1027,3 +1027,375 @@ th.sortable.descending::after {
     border-bottom: none;
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Groups                                                              */
+/*                                                                     */
+/* Everything here is built from the theme's custom properties, so the */
+/* light theme needs no overrides of its own: the variables are        */
+/* already redefined under [data-theme="light"] above. The two         */
+/* literal rgba() colours below are the outcome pills, which need a    */
+/* translucent wash over whatever the background happens to be.        */
+/* ------------------------------------------------------------------ */
+
+.group-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    max-width: 1400px;
+    margin: 0 auto 12px auto;
+    padding: 0 20px;
+}
+
+.group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.group-chip:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-blue);
+}
+
+.group-chip.active {
+    background: var(--bg-tertiary);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    font-weight: 500;
+}
+
+.group-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    border-radius: 9px;
+    padding: 1px 6px;
+}
+
+.group-chip.active .group-count {
+    color: var(--accent-blue);
+}
+
+.group-chip.new-group-btn {
+    border-style: dashed;
+    color: var(--text-muted);
+}
+
+/* The strip of things that act on the whole group. It is deliberately
+   set apart from the table: these buttons have a blast radius the
+   per-row ones do not. */
+.group-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 1400px;
+    margin: 0 auto 12px auto;
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.group-action-summary {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.group-member-count,
+.group-ghost-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Members the server has no row for. Named rather than silently
+   dropped: "7 members, 5 rows" with no explanation costs an afternoon. */
+.group-ghost-note {
+    color: var(--accent-yellow);
+    cursor: help;
+}
+
+.group-action-buttons {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.group-action-btn,
+.group-edit-btn {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.group-action-btn:hover:not(:disabled),
+.group-edit-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent-blue);
+}
+
+.group-action-btn:disabled,
+.group-edit-btn:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.group-edit-btn {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* The report of what a group action actually did. It stays on screen
+   until dismissed, because a reboot that skipped two hosts is something
+   to keep reading while you go and look at them. */
+.group-action-report {
+    max-width: 1400px;
+    margin: 0 auto 12px auto;
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.group-report-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-primary);
+}
+
+.group-report-dismiss {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.group-report-dismiss:hover {
+    color: var(--text-primary);
+}
+
+.group-report-list {
+    list-style: none;
+    margin: 10px 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.group-report-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.outcome-pill {
+    flex: 0 0 auto;
+    min-width: 88px;
+    text-align: center;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+
+.outcome-pill.accepted {
+    background: rgba(63, 185, 80, 0.15);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+}
+
+.outcome-pill.skipped {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.outcome-pill.refused,
+.outcome-pill.unreachable,
+.outcome-pill.failed {
+    background: rgba(248, 81, 73, 0.15);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
+
+.outcome-host {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.outcome-host.ghost {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.outcome-reason {
+    color: var(--text-secondary);
+}
+
+/* The group labels beside a hostname in the table. They sit inside the
+   hostname cell rather than in a column of their own: the table's
+   colspan is hardcoded in three places and its header is hand-written. */
+.host-group-chip {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 7px;
+    font-size: 11px;
+    border-radius: 9px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    vertical-align: middle;
+}
+
+/* The per-host editor in the expanded row. Groups are a property of the
+   host, so this sits with the system information, not in the actions. */
+.group-editor {
+    margin-top: 16px;
+}
+
+.group-editor h4 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.group-editor-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.group-editor-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.group-editor-option input {
+    margin: 0;
+    accent-color: var(--accent-blue);
+    cursor: pointer;
+}
+
+.group-editor-empty {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.group-editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.save-groups-btn {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.save-groups-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent-blue);
+}
+
+.save-groups-btn:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.group-editor-dirty {
+    font-size: 12px;
+    color: var(--accent-yellow);
+}
+
+/* Derived groups: computed by the server from what the hosts report, rather
+   than curated. Marked with a diamond and a dimmer, dashed outline so the bar
+   reads as two kinds of thing — facts about the fleet, and decisions about
+   it — without needing a legend. */
+.group-chip.derived {
+    border-style: dashed;
+    color: var(--text-muted);
+}
+
+.group-chip.derived:hover {
+    color: var(--text-secondary);
+}
+
+.group-chip.derived.active {
+    border-style: solid;
+    color: var(--accent-blue);
+}
+
+.group-derived-note {
+    font-size: 12px;
+    font-style: italic;
+    color: var(--text-muted);
+    cursor: help;
+}
+
+.host-group-chip.derived {
+    border-style: dashed;
+    color: var(--text-muted);
+}
+
+.group-editor-derived {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.group-editor-derived-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-right: 2px;
+}

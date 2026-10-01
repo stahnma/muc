@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -223,51 +222,19 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 			return
 		}
 
-		system, err := store.GetSystem(hostname)
-		if err != nil {
-			writeAPIError(w, http.StatusNotFound, "System not found")
-			return
-		}
-		if !system.RemoteUpdatesEnabled {
-			writeAPIError(w, http.StatusConflict,
-				"This host has not opted into remote updates (set allow_remote_updates: true in its client config)")
+		res := dispatch(store, actionUpdate, requesters{update: updater}, hostname, requesterAddress(r))
+		if res.Outcome != OutcomeAccepted {
+			writeAPIError(w, statusFor(res), res.Reason)
 			return
 		}
 
-		ack, err := updater.RequestUpdate(hostname, requesterAddress(r))
-		switch {
-		case errors.Is(err, models.ErrHostNotListening):
-			// The stored opt-in said yes but nothing answered, so the host is
-			// down or its client has since been reconfigured.
-			writeAPIError(w, http.StatusServiceUnavailable,
-				"No response from "+hostname+": it is offline, or its client is no longer accepting update commands")
-			return
-		case err != nil:
-			slog.Error("Update request failed", "hostname", hostname, "error", err)
-			writeAPIError(w, http.StatusBadGateway, "Update request failed: "+err.Error())
-			return
-		}
-
-		if !ack.Accepted {
-			reason := ack.Reason
-			if reason == "" {
-				reason = "the host refused the update request"
-			}
-			writeAPIError(w, http.StatusConflict, reason)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		if err := json.NewEncoder(w).Encode(map[string]string{
+		writeJSON(w, http.StatusAccepted, map[string]string{
 			"status":   "accepted",
 			"hostname": hostname,
-			"id":       ack.ID,
-			"command":  ack.Command,
+			"id":       res.ID,
+			"command":  res.Command,
 			"message":  "Update started on " + hostname,
-		}); err != nil {
-			slog.Error("Failed to write update response", "error", err)
-		}
+		})
 	}
 }
 
@@ -297,53 +264,18 @@ func RebootHandler(store storage.Storage, rebooter RebootRequester) http.Handler
 			return
 		}
 
-		system, err := store.GetSystem(hostname)
-		if err != nil {
-			writeAPIError(w, http.StatusNotFound, "System not found")
-			return
-		}
-		if !system.RemoteRebootEnabled {
-			writeAPIError(w, http.StatusConflict,
-				"This host has not opted into remote reboots (set allow_remote_reboot: true in its client config)")
-			return
-		}
-		if !system.RebootRequired {
-			writeAPIError(w, http.StatusConflict,
-				"This host did not report a pending reboot at its last check-in")
+		res := dispatch(store, actionReboot, requesters{reboot: rebooter}, hostname, requesterAddress(r))
+		if res.Outcome != OutcomeAccepted {
+			writeAPIError(w, statusFor(res), res.Reason)
 			return
 		}
 
-		ack, err := rebooter.RequestReboot(hostname, requesterAddress(r))
-		switch {
-		case errors.Is(err, models.ErrHostNotListening):
-			writeAPIError(w, http.StatusServiceUnavailable,
-				"No response from "+hostname+": it is offline, or its client is no longer accepting reboot commands")
-			return
-		case err != nil:
-			slog.Error("Reboot request failed", "hostname", hostname, "error", err)
-			writeAPIError(w, http.StatusBadGateway, "Reboot request failed: "+err.Error())
-			return
-		}
-
-		if !ack.Accepted {
-			reason := ack.Reason
-			if reason == "" {
-				reason = "the host refused the reboot request"
-			}
-			writeAPIError(w, http.StatusConflict, reason)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		if err := json.NewEncoder(w).Encode(map[string]string{
+		writeJSON(w, http.StatusAccepted, map[string]string{
 			"status":   "accepted",
 			"hostname": hostname,
-			"id":       ack.ID,
+			"id":       res.ID,
 			"message":  hostname + " is rebooting",
-		}); err != nil {
-			slog.Error("Failed to write reboot response", "error", err)
-		}
+		})
 	}
 }
 
@@ -374,44 +306,18 @@ func CheckInHandler(store storage.Storage, requester CheckInRequester) http.Hand
 			return
 		}
 
-		if _, err := store.GetSystem(hostname); err != nil {
-			writeAPIError(w, http.StatusNotFound, "System not found")
+		res := dispatch(store, actionCheckIn, requesters{checkIn: requester}, hostname, requesterAddress(r))
+		if res.Outcome != OutcomeAccepted {
+			writeAPIError(w, statusFor(res), res.Reason)
 			return
 		}
 
-		ack, err := requester.RequestCheckIn(hostname, requesterAddress(r))
-		switch {
-		case errors.Is(err, models.ErrHostNotListening):
-			// Every current client subscribes, so this is a host that is down
-			// or one running a client from before the command existed.
-			writeAPIError(w, http.StatusServiceUnavailable,
-				"No response from "+hostname+": it is offline, or its client is too old to accept check-in requests")
-			return
-		case err != nil:
-			slog.Error("Check-in request failed", "hostname", hostname, "error", err)
-			writeAPIError(w, http.StatusBadGateway, "Check-in request failed: "+err.Error())
-			return
-		}
-
-		if !ack.Accepted {
-			reason := ack.Reason
-			if reason == "" {
-				reason = "the host refused the check-in request"
-			}
-			writeAPIError(w, http.StatusConflict, reason)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		if err := json.NewEncoder(w).Encode(map[string]string{
+		writeJSON(w, http.StatusAccepted, map[string]string{
 			"status":   "accepted",
 			"hostname": hostname,
-			"id":       ack.ID,
+			"id":       res.ID,
 			"message":  hostname + " is checking in",
-		}); err != nil {
-			slog.Error("Failed to write check-in response", "error", err)
-		}
+		})
 	}
 }
 

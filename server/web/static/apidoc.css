@@ -130,6 +130,12 @@ h1 {
     border: 1px solid rgba(248, 81, 73, 0.3);
 }
 
+.method.put {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--accent-yellow);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
 .path {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 16px;

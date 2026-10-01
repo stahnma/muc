@@ -410,6 +410,414 @@
             </div>
         </div>
 
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/groups</span>
+            </div>
+            <div class="description">
+                Lists every group with its members. A group is a named set of hostnames kept by the server so the
+                dashboard can act on several hosts at once.
+                <br><br>
+                Two kinds come back from this one route. <strong>Stored groups</strong> are the ones you create and
+                fill. <strong>Derived groups</strong> are computed from what the hosts already report, are namespaced
+                by a prefix — <code>os:</code>, <code>pkg:</code>, <code>arch:</code>, <code>state:</code> — and carry
+                <code>"derived": true</code>. They are recomputed on every read, so they are always current and there
+                is never a stale one to clean up.
+                <br><br>
+                Groups are deliberately not part of the <code>/api/systems</code> payload. They are server-owned and
+                change by hand, while a system record is overwritten by its host every few minutes; keeping them
+                apart means a check-in can never clobber a group. The dashboard reads this route and inverts it to
+                work out which groups a host is in.
+                <br><br>
+                Nothing has to be configured for groups to work, on the server or on a host, and a host is never told
+                which groups it is in.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>Every group, ordered by name. An empty server returns <code>[]</code>.</span>
+                </div>
+                <div class="code-block">[
+  {
+    "name": "prod",
+    "members": ["db01", "web01", "web02"]
+  }
+]</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Fields</div>
+                <div class="param">
+                    <div class="param-name">name</div>
+                    <div class="param-desc">The group's name as it was typed. Names are compared without regard to
+                        case, so <code>prod</code> and <code>Prod</code> are the same group and cannot both exist.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">members</div>
+                    <div class="param-desc">Hostnames, sorted and de-duplicated. A member may name a host the server
+                        has never seen — one that has not checked in yet, or whose row was deleted. That is a
+                        legitimate state, not an error; a group action skips such a member.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">derived</div>
+                    <div class="param-desc">Present and <code>true</code> only on a computed group. A derived group
+                        exists for exactly as long as something matches it, and cannot be created, renamed, deleted,
+                        or have its membership edited — every such route answers <code>409</code>. The derived
+                        groups are <code>os:&lt;distro&gt;</code>, <code>pkg:&lt;family&gt;</code> (rpm, deb, pacman,
+                        nix, brew, portage, apk, xbps), <code>arch:&lt;arch&gt;</code>,
+                        <code>state:needs-reboot</code> and <code>state:has-updates</code>.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/groups</span>
+            </div>
+            <div class="description">
+                Creates a group. Creating one is deliberately its own act rather than something that happens the
+                first time a name is typed somewhere else: a typo that founds a group of one is far harder to notice
+                than a typo that is refused.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Request Body</div>
+                <div class="code-block">{
+  "name": "prod",
+  "members": ["web01"]
+}</div>
+                <div class="param">
+                    <div class="param-name">name</div>
+                    <div class="param-desc">Required. Trimmed; at most 64 characters; may not be empty, contain
+                        <code>/</code> or <code>:</code>, or contain control characters. <code>:</code> is reserved
+                        for the derived namespace, so a stored group can never shadow <code>os:fedora</code> and
+                        make a group action ambiguous about which hosts it meant.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">members</div>
+                    <div class="param-desc">Optional. Defaults to an empty group.</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">201 Created</span>
+                    <span>The new group</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">400 Bad Request</span>
+                    <span>The name is empty, too long, or contains a forbidden character</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">409 Conflict</span>
+                    <span>A group of that name already exists, ignoring case</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/groups/{group}</span>
+            </div>
+            <div class="description">
+                Returns one group. The name in the path is matched without regard to case.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>The group</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>No such group</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method put">PUT</span>
+                <span class="path">/api/groups/{group}</span>
+            </div>
+            <div class="description">
+                Renames a group, replaces its membership, or both. Derived groups answer <code>409</code>: their
+                members come from what the hosts report, so there is nothing here to change.
+                <br><br>
+                Both fields are optional, and leaving one out is different from sending it empty: omitting
+                <code>members</code> leaves membership alone, so a rename cannot accidentally empty a group, while
+                <code>"members": []</code> empties it on purpose.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Request Body</div>
+                <div class="code-block">{
+  "name": "production",
+  "members": ["db01", "web01"]
+}</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>The group as it now stands</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">400 Bad Request</span>
+                    <span>The new name is not a valid group name</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>No such group</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">409 Conflict</span>
+                    <span>The new name is already taken by another group</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method delete">DELETE</span>
+                <span class="path">/api/groups/{group}</span>
+            </div>
+            <div class="description">
+                Deletes a group. The hosts in it are untouched — a group is a label, and dropping the label is not
+                dropping the machines.
+                <br><br>
+                Derived groups answer <code>409</code>. One disappears on its own as soon as nothing matches it,
+                which is the only way it can go.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>The group was deleted</span>
+                </div>
+                <div class="code-block">{
+  "status": "success",
+  "message": "Group deleted successfully",
+  "group": "prod"
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>No such group</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method delete">DELETE</span>
+                <span class="path">/api/groups/{group}/members/{hostname}</span>
+            </div>
+            <div class="description">
+                Removes one host from one group.
+                <br><br>
+                This is how a member the server no longer knows about gets evicted — a machine that was
+                decommissioned, or a name that was mistyped into the list. Such a host has no row in the dashboard,
+                so the per-host editor cannot reach it.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>The group as it now stands</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>No such group, or that host is not a member of it</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method put">PUT</span>
+                <span class="path">/api/systems/{hostname}/groups</span>
+            </div>
+            <div class="description">
+                Replaces one host's memberships with exactly the list given, so a group left out of the list is a
+                group the host leaves. This is what the group editor in the dashboard's expanded row sends.
+                <br><br>
+                Every group named must already exist. A name that is not a group is refused rather than created, so a
+                typo joins nothing instead of quietly founding a group of one — and nothing in the list is applied
+                when any of it is refused. Naming a derived group answers <code>409</code>: a host joins
+                <code>os:fedora</code> by being a Fedora box, not by being put there.
+                <br><br>
+                The host need not have checked in. Putting a machine into its groups before it is built is a
+                reasonable thing to want, and membership already outlives the system record.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Request Body</div>
+                <div class="code-block">{
+  "groups": ["prod", "web"]
+}</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>The groups the host is now in</span>
+                </div>
+                <div class="code-block">{
+  "hostname": "web01",
+  "groups": ["prod", "web"]
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">400 Bad Request</span>
+                    <span>The body is not valid JSON, or it names a group that does not exist</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/groups/{group}/checkin</span>
+            </div>
+            <div class="description">
+                Asks every member of the group to check in. The members are asked all at once rather than in
+                sequence, so the whole call takes about as long as the slowest single host.
+                <br><br>
+                <strong>The status is 200 even when members were skipped or could not be reached. The body is the
+                thing to read.</strong> The request was "fan this out and tell me what happened", and it did exactly
+                that; a status code cannot summarise a dozen different answers, so it does not try. See
+                <code>/api/groups/{group}/update</code> below for the response shape, which all three group actions
+                share.
+                <br><br>
+                Like the single-host route, nothing configured gates this, and it answers
+                <code>503</code> rather than <code>403</code> when it is unavailable: a check-in has no feature flag,
+                so its unavailability is an infrastructure fact rather than a policy one.
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/groups/{group}/update</span>
+            </div>
+            <div class="description">
+                Asks every member of the group to install its pending packages, all at once.
+                <br><br>
+                Works on a derived group as readily as a stored one — <code>/api/groups/pkg:rpm/update</code> is the
+                "update everything rpm-based" case. A derived group's members are resolved when the action runs
+                rather than when the page was drawn, which is what makes
+                <code>/api/groups/state:needs-reboot/reboot</code> mean what is true at the moment you call it. A
+                derived group with no members does not exist, so it answers <code>404</code> rather than running
+                against nobody.
+                <br><br>
+                Gated exactly like the single-host route: <code>remote_updates</code> on the server decides whether
+                the route works at all, and each host's own <code>allow_remote_updates</code> decides whether it is a
+                candidate. A member that has not opted in is <em>skipped</em>, not an error — one machine declining
+                should not stop the other eleven being patched.
+                <br><br>
+                <strong>The status is 200 whenever the group exists and the feature is on, however the individual
+                hosts answered.</strong>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>The fan-out ran; every member has a result</span>
+                </div>
+                <div class="code-block">{
+  "group": "prod",
+  "action": "update",
+  "requested": 4,
+  "accepted": 1,
+  "skipped": 2,
+  "failed": 1,
+  "results": [
+    { "hostname": "web01", "outcome": "accepted", "id": "9f2c1b0a4d5e6f70",
+      "command": "/usr/libexec/muc/upd" },
+    { "hostname": "db01", "outcome": "skipped", "code": "not_opted_in",
+      "reason": "This host has not opted into remote updates (set allow_remote_updates: true in its client config)" },
+    { "hostname": "ghost01", "outcome": "skipped", "code": "unknown_host",
+      "reason": "System not found" },
+    { "hostname": "web02", "outcome": "unreachable", "code": "not_listening",
+      "reason": "No response from web02: it is offline, or its client is no longer accepting update commands" }
+  ]
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">403 Forbidden</span>
+                    <span>Remote updates are disabled on this server</span>
+                </div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>No such group</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Result Fields</div>
+                <div class="param">
+                    <div class="param-name">requested / accepted / skipped / failed</div>
+                    <div class="param-desc">Counts for the summary line. <code>failed</code> aggregates the
+                        <code>refused</code>, <code>unreachable</code> and <code>failed</code> outcomes; the result
+                        list keeps them apart.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">results[].outcome</div>
+                    <div class="param-desc">One of <code>accepted</code>, <code>skipped</code>,
+                        <code>refused</code>, <code>unreachable</code>, <code>failed</code>. The distinction between
+                        <em>skipped</em> and <em>refused</em> is worth reading: skipped is what the server knew
+                        before it sent anything, refused is what the host said back.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">results[].code</div>
+                    <div class="param-desc">The machine-readable reason, so a client need not match on prose:
+                        <code>unknown_host</code>, <code>not_opted_in</code>, <code>no_reboot_pending</code>,
+                        <code>host_refused</code>, <code>not_listening</code>, <code>request_failed</code>.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">results[].reason</div>
+                    <div class="param-desc">The same sentence the single-host route would have returned as its error
+                        body, so both paths explain themselves identically.</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">results[].id</div>
+                    <div class="param-desc">The host's own request id, present only when it accepted.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/groups/{group}/reboot</span>
+            </div>
+            <div class="description">
+                Reboots every member of the group that reports a pending reboot, all at once.
+                <br><br>
+                Gated by <code>remote_reboot</code> on the server and <code>allow_remote_reboot</code> on each host,
+                and like the single-host route it insists the host's last check-in reported a pending reboot.
+                Members with nothing pending are skipped with <code>no_reboot_pending</code>, which is also what
+                makes the control safe to press after a group update: it reboots what needs it and leaves the rest.
+                <br><br>
+                The response is the shape documented under <code>/api/groups/{group}/update</code>.
+                <br><br>
+                <strong>This is the single most consequential thing this server can do, and nothing authenticates the
+                caller.</strong> Every group action is logged at WARN with the group, the action, the requesting
+                address and the counts.
+            </div>
+        </div>
+
         <div class="endpoint">
             <div class="endpoint-header">
                 <span class="method get">GET</span>
