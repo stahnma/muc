@@ -1,133 +1,356 @@
-/* Modern Developer Console Theme - Dark Mode (Default) */
+/* ------------------------------------------------------------------ */
+/* MUC — "label tape on rack metal"                                    */
+/*                                                                     */
+/* The page is the rack: a powder-coated petrol steel in dark, brushed */
+/* aluminium in light. Status is the label-maker tape people stick on  */
+/* the machines themselves, and the tape colours are the ones real     */
+/* tape cassettes come in — yellow, red, green, blue, white. Tape does */
+/* not change colour with the lights, so the --tape-* values are the   */
+/* same in both themes; only the steel around them changes.            */
+/*                                                                     */
+/* Archivo (variable width) sets the labels and headings; Martian Mono */
+/* sets anything a machine reported: hostnames, addresses, versions,   */
+/* times. Both are vendored under /static/fonts (SIL OFL 1.1).         */
+/* ------------------------------------------------------------------ */
+
+@font-face {
+    font-family: 'Archivo';
+    src: url('/static/fonts/archivo-wdth.woff2') format('woff2');
+    font-weight: 100 900;
+    font-stretch: 62% 125%;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Martian Mono';
+    src: url('/static/fonts/martian-mono-wdth.woff2') format('woff2');
+    font-weight: 100 800;
+    font-stretch: 75% 112.5%;
+    font-display: swap;
+}
+
+/* Martian Mono's default width is generous; a table of addresses and times
+   reads better a notch narrower. Every use of the data face goes through
+   this one rule. */
+.data-face,
+#systems td,
+.system-info dd,
+.outcome-host,
+.floating-footer,
+.update-run-output pre {
+    font-stretch: 87.5%;
+}
+
 :root {
-    --bg-primary: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #21262d;
-    --bg-hover: #1c2128;
-    --border-color: #30363d;
-    --text-primary: #c9d1d9;
-    --text-secondary: #8b949e;
-    --text-muted: #6e7681;
-    --accent-blue: #58a6ff;
-    --accent-blue-hover: #79c0ff;
-    --accent-green: #3fb950;
-    --accent-red: #f85149;
-    --accent-yellow: #d29922;
-    --accent-orange: #f0883e;
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+    /* Steel */
+    --bg-primary: #0e1a1d;
+    --bg-secondary: #13242a;
+    --bg-tertiary: #1a2f36;
+    --bg-hover: #1d353d;
+    --border-color: #27424a;
+    --border-strong: #3a5a63;
+    --text-primary: #e3ece9;
+    --text-secondary: #9db3b1;
+    --text-muted: #6b8584;
+
+    /* Tape, identical in both themes */
+    --tape-yellow: #f2c230;
+    --tape-red: #d8343f;
+    --tape-green: #3fa66a;
+    --tape-blue: #3d7fd9;
+    --tape-orange: #ef8a2e;
+    --tape-white: #eef0ea;
+    --tape-ink: #15140f;
+    --tape-ink-light: #ffffff;
+
+    /* Status read as text against the steel, tuned per theme for contrast */
+    --accent-blue: #7eb0ff;
+    --accent-blue-hover: #a4c7ff;
+    --accent-green: #62cc8f;
+    --accent-red: #ff6f77;
+    --accent-yellow: #f2c230;
+    --accent-orange: #f5a24a;
+
+    /* Focus and selection use tape yellow: the one bright thing on the rack */
+    --signal: #f2c230;
+    --signal-ink: #15140f;
+
+    --font-label: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+    --font-data: 'Martian Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+    --radius: 3px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
 }
 
-/* Light Mode Theme */
 [data-theme="light"] {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f6f8fa;
-    --bg-tertiary: #e1e4e8;
-    --bg-hover: #f0f3f6;
-    --border-color: #d1d5da;
-    --text-primary: #24292e;
-    --text-secondary: #586069;
-    --text-muted: #959da5;
-    --accent-blue: #0366d6;
-    --accent-blue-hover: #0256cc;
-    --accent-green: #28a745;
-    --accent-red: #d73a49;
-    --accent-yellow: #e36209;
-    --accent-orange: #e36209;
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+    --bg-primary: #dde5e4;
+    --bg-secondary: #f4f7f6;
+    --bg-tertiary: #e7eeed;
+    --bg-hover: #edf3f2;
+    --border-color: #c3cfcd;
+    --border-strong: #9fb1b0;
+    --text-primary: #0f1f22;
+    --text-secondary: #43585a;
+    --text-muted: #6c8082;
+
+    --accent-blue: #1f5fb8;
+    --accent-blue-hover: #174a90;
+    --accent-green: #1d7a45;
+    --accent-red: #b3202b;
+    --accent-yellow: #8a6400;
+    --accent-orange: #a24f00;
+
+    --signal: #0f1f22;
+    --signal-ink: #f2c230;
+
+    --shadow-sm: 0 1px 2px rgba(15, 31, 34, 0.12);
+    --shadow-md: 0 6px 18px rgba(15, 31, 34, 0.14);
+    --shadow-lg: 0 14px 40px rgba(15, 31, 34, 0.2);
+
+    color-scheme: light;
 }
 
-/* General styles */
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
 * {
     box-sizing: border-box;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    font-family: var(--font-label);
+    font-size: 14px;
     margin: 0;
     padding: 0;
-    padding-bottom: 60px;
     background: var(--bg-primary);
-    background-image: 
-        radial-gradient(circle at 20% 50%, rgba(88, 166, 255, 0.03) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(63, 185, 80, 0.03) 0%, transparent 50%);
     color: var(--text-primary);
-    line-height: 1.6;
+    line-height: 1.5;
     min-height: 100vh;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
 }
 
-[data-theme="light"] body {
-    background-image: 
-        radial-gradient(circle at 20% 50%, rgba(3, 102, 214, 0.05) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(40, 167, 69, 0.05) 0%, transparent 50%);
+::selection {
+    background: var(--tape-yellow);
+    color: var(--tape-ink);
+}
+
+:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+}
+
+a {
+    color: var(--accent-blue);
+}
+
+/* ------------------------------------------------------------------ */
+/* Masthead                                                            */
+/*                                                                     */
+/* The title is a strip of yellow tape, stuck on slightly crooked the  */
+/* way a hand-applied label always is.                                 */
+/* ------------------------------------------------------------------ */
+
+.masthead {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 36px 24px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px 24px;
 }
 
 h1 {
-    text-align: center;
-    margin: 32px 0 24px 0;
-    color: var(--text-primary);
-    font-size: 28px;
+    margin: 0;
+    font-family: var(--font-label);
+    font-size: 30px;
+    font-weight: 800;
+    font-stretch: 112%;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.masthead h1 {
+    display: inline-block;
+    padding: 12px 26px 11px;
+    background: var(--tape-yellow);
+    color: var(--tape-ink);
+    border-radius: 2px;
+    transform: rotate(-1.2deg);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.45),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+        0 1px 1px rgba(0, 0, 0, 0.25),
+        0 4px 10px rgba(0, 0, 0, 0.18);
+    /* The laminate: a faint sheen across the top half of the tape. */
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 45%);
+}
+
+.masthead-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+
+button {
+    font-family: var(--font-label);
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: -0.5px;
+    font-stretch: 94%;
+    letter-spacing: 0.01em;
+    padding: 7px 14px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-/* Controls styling */
-.controls {
-    text-align: center;
-    margin: 24px auto;
-    max-width: 1200px;
-    padding: 0 24px;
+button:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--text-secondary);
 }
 
-.controls button {
-    margin: 0 8px;
+button:active:not(:disabled) {
+    transform: translateY(1px);
 }
 
-/* Table styles */
+button:disabled {
+    color: var(--text-muted);
+    border-color: var(--border-color);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+/* The per-host actions. Each is an outline in its tape colour and fills
+   with that tape on hover, so the colour says how much the action does
+   before the label does: green asks, blue patches, orange reboots, red
+   deletes. */
+button.check-in-btn,
+button.run-update-btn,
+button.reboot-btn,
+button.delete-system-btn {
+    --act: var(--accent-blue);
+    --act-fill: var(--tape-blue);
+    --act-ink: var(--tape-ink-light);
+    background: transparent;
+    border-color: var(--act);
+    color: var(--act);
+}
+
+button.check-in-btn {
+    --act: var(--accent-green);
+    --act-fill: var(--tape-green);
+    --act-ink: var(--tape-ink);
+}
+
+button.reboot-btn {
+    --act: var(--accent-orange);
+    --act-fill: var(--tape-orange);
+    --act-ink: var(--tape-ink);
+}
+
+button.delete-system-btn {
+    --act: var(--accent-red);
+    --act-fill: var(--tape-red);
+    --act-ink: var(--tape-ink-light);
+}
+
+button.check-in-btn:hover:not(:disabled),
+button.run-update-btn:hover:not(:disabled),
+button.reboot-btn:hover:not(:disabled),
+button.delete-system-btn:hover:not(:disabled) {
+    background: var(--act-fill);
+    border-color: var(--act-fill);
+    color: var(--act-ink);
+}
+
+button.check-in-btn:disabled,
+button.run-update-btn:disabled,
+button.reboot-btn:disabled,
+button.delete-system-btn:disabled {
+    background: transparent;
+    border-color: var(--border-color);
+    color: var(--text-muted);
+}
+
+/* Theme toggle: a square key at the end of the masthead tools. */
+.theme-toggle {
+    width: 36px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Systems table                                                       */
+/* ------------------------------------------------------------------ */
+
 table {
-    width: 95%;
-    max-width: 1400px;
-    margin: 24px auto;
-    border-collapse: collapse;
+    width: calc(100% - 48px);
+    max-width: 1352px;
+    margin: 4px auto 32px;
+    border-collapse: separate;
+    border-spacing: 0;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: var(--shadow-md);
+    border-radius: 4px;
+    box-shadow: var(--shadow-sm);
 }
 
 th, td {
-    padding: 12px 16px;
+    padding: 10px 12px;
     text-align: left;
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
-    line-height: 1.5;
-    box-sizing: border-box;
+    line-height: 1.45;
 }
 
 th {
     background: var(--bg-tertiary);
-    color: var(--text-primary);
-    font-weight: 600;
-    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 11px;
+    font-stretch: 88%;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.12em;
     position: sticky;
     top: 0;
     z-index: 10;
+    border-bottom-color: var(--border-strong);
+    white-space: nowrap;
+}
+
+thead th:first-child {
+    border-top-left-radius: 4px;
+}
+
+thead th:last-child {
+    border-top-right-radius: 4px;
 }
 
 tbody tr {
     background: var(--bg-secondary);
-    transition: background-color 0.15s ease;
-}
-
-tbody tr:nth-child(even) {
-    background: var(--bg-tertiary);
+    transition: background-color 0.12s ease;
 }
 
 tbody tr:hover {
@@ -138,327 +361,400 @@ tbody tr:last-child td {
     border-bottom: none;
 }
 
-.details-row {
-    background: var(--bg-primary) !important;
-}
-
-.details-content {
-    padding: 20px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    margin: 8px 0;
-    border-radius: 6px;
-    border-left: 3px solid var(--accent-blue);
-    color: var(--text-primary);
-}
-
-/* Updates table styles */
-.updates-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 16px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.updates-table th, .updates-table td {
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    text-align: left;
-    color: var(--text-primary);
-}
-
-.updates-table th {
-    background: var(--bg-tertiary);
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid var(--border-color);
-}
-
-.updates-table tbody tr {
-    background: var(--bg-secondary);
-}
-
-.updates-table tbody tr:hover {
-    background: var(--bg-tertiary);
-}
-
-.updates-table tbody td {
-    color: var(--text-primary);
-}
-
-/* Button styles */
-button {
-    padding: 8px 16px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
+/* Data cells: the hostname is the row's name, so it gets the weight. */
+#systems > tr:not(.details-row) > td:nth-child(2) {
+    font-family: var(--font-data);
     font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    font-family: inherit;
-}
-
-button:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--accent-blue);
-    color: var(--accent-blue);
-}
-
-button:active:not(:disabled) {
-    transform: translateY(1px);
-}
-
-button:disabled {
-    background: var(--bg-tertiary);
-    border-color: var(--border-color);
-    color: var(--text-muted);
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-/* Modal styles */
-.modal {
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    padding: 24px;
-    border-radius: 8px;
-    box-shadow: var(--shadow-lg);
-    z-index: 1000;
-    max-width: 500px;
-    width: 90%;
-    color: var(--text-primary);
-}
-
-.modal-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    z-index: 999;
-    transition: background-color 0.3s ease;
-}
-
-[data-theme="light"] .modal-overlay {
-    background: rgba(0, 0, 0, 0.5);
-}
-
-/* Responsive styles */
-@media (max-width: 768px) {
-    table {
-        font-size: 13px;
-        width: 98%;
-    }
-
-    th, td {
-        padding: 10px 12px;
-    }
-
-    button {
-        font-size: 12px;
-        padding: 6px 12px;
-    }
-
-    h1 {
-        font-size: 24px;
-        margin: 24px 0 20px 0;
-    }
-}
-
-/* Additional modern touches */
-.details-content h3 {
-    color: var(--text-primary);
-    font-size: 16px;
     font-weight: 600;
-    margin: 0 0 16px 0;
-    padding-bottom: 8px;
-    border-bottom: 2px solid var(--border-color);
 }
 
-.details-content p {
-    color: var(--text-primary);
-    margin: 12px 0;
-}
-
-/* Scrollbar styling for modern browsers */
-::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-}
-
-::-webkit-scrollbar-track {
-    background: var(--bg-primary);
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--bg-tertiary);
-    border-radius: 5px;
-    border: 2px solid var(--bg-primary);
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--border-color);
-}
-
-/* Chevron cell styling */
-.chevron-cell {
-    text-align: center;
-    width: 40px;
-    cursor: pointer;
-}
-
-.chevron {
-    font-size: 14px;
+#systems > tr:not(.details-row) > td:nth-child(4),
+#systems > tr:not(.details-row) > td:nth-child(5),
+#systems > tr:not(.details-row) > td:nth-child(7),
+#systems > tr:not(.details-row) > td:nth-child(8) {
+    font-family: var(--font-data);
+    font-size: 12px;
     color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-    transition: color 0.2s ease, transform 0.2s ease;
-    display: inline-block;
+    white-space: nowrap;
 }
-
-.chevron:hover {
-    color: var(--accent-blue);
-    transform: scale(1.1);
-}
-
 
 th.sortable {
     cursor: pointer;
     user-select: none;
-    transition: color 0.2s ease, background-color 0.2s ease;
+    transition: color 0.12s ease;
 }
 
 th.sortable:hover {
-    color: var(--accent-blue);
-    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+th.sortable.ascending,
+th.sortable.descending {
+    color: var(--text-primary);
 }
 
 th.sortable.ascending::after {
-    content: " ▲";
-    color: var(--accent-blue);
-    font-size: 10px;
-    margin-left: 4px;
+    content: "\2191";
+    margin-left: 6px;
+    color: var(--accent-yellow);
 }
 
 th.sortable.descending::after {
-    content: " ▼";
-    color: var(--accent-blue);
+    content: "\2193";
+    margin-left: 6px;
+    color: var(--accent-yellow);
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* The whole row opens its details; the chevron is the visible hint and the
+   keyboard's way in. */
+#systems > tr:not(.details-row) {
+    cursor: pointer;
+}
+
+.chevron-cell {
+    width: 36px;
+    padding-right: 0;
+    text-align: center;
+}
+
+button.chevron {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: none;
     font-size: 10px;
-    margin-left: 4px;
-}
-
-/* Update badge styles */
-.update-badge {
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    display: inline-block;
-    transition: all 0.2s ease;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-}
-
-.update-available {
-    background: rgba(248, 81, 73, 0.15);
-    color: var(--accent-red);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-}
-
-.up-to-date {
-    background: rgba(63, 185, 80, 0.15);
-    color: var(--accent-green);
-    border: 1px solid rgba(63, 185, 80, 0.3);
-}
-
-.status-unknown {
-    background: rgba(110, 118, 129, 0.15);
     color: var(--text-muted);
-    border: 1px solid rgba(110, 118, 129, 0.3);
 }
 
-/* Priority styles */
-.priority-high {
-    background: rgba(248, 81, 73, 0.2) !important;
-    border: 1px solid var(--accent-red) !important;
-    color: var(--accent-red) !important;
-    animation: pulse 2s infinite;
+button.chevron:hover:not(:disabled),
+tr:hover button.chevron {
+    background: none;
+    color: var(--text-primary);
 }
 
+button.chevron[aria-expanded="true"] {
+    color: var(--accent-yellow);
+}
+
+/* ------------------------------------------------------------------ */
+/* Row actions                                                         */
+/*                                                                     */
+/* Always drawn, always in the same place on every row, so the column  */
+/* reads downward as "which hosts can I do this to". A control a host  */
+/* has not opted into is drawn disabled, with the reason on hover.     */
+/* ------------------------------------------------------------------ */
+
+.actions-cell {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+    cursor: default;
+}
+
+.row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.row-actions button {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* Reboot is a checkbox fused to its button: tick, then press. Drawn as one
+   control so the confirmation reads as part of the action, not a stray box
+   floating in the row. */
+.reboot-controls {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+}
+
+.reboot-controls input {
+    margin: 0;
+    padding: 0 7px;
+    width: 28px;
+    accent-color: var(--tape-orange);
+    cursor: pointer;
+}
+
+.reboot-controls input:disabled {
+    cursor: not-allowed;
+}
+
+.reboot-controls .reboot-btn {
+    border: none;
+    border-left: 1px solid var(--border-color);
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.reboot-controls.blocked {
+    opacity: 0.45;
+}
+
+.reboot-controls.blocked input {
+    visibility: hidden;
+}
+
+.reboot-controls:not(.blocked) {
+    border-color: var(--accent-orange);
+}
+
+.reboot-controls.armed .reboot-btn:not(:disabled) {
+    background: var(--tape-orange);
+    color: var(--tape-ink);
+    border-left-color: var(--tape-orange);
+}
+
+/* ------------------------------------------------------------------ */
+/* Expanded details                                                    */
+/*                                                                     */
+/* Three columns side by side rather than one long stack: what is      */
+/* waiting to install (the reason to open the row), the machine, and   */
+/* its groups. The run and reboot records span the width beneath, and  */
+/* only when there is one.                                             */
+/* ------------------------------------------------------------------ */
+
+.details-row,
+.details-row:hover {
+    background: var(--bg-primary);
+}
+
+.details-row > td {
+    padding: 0 14px 14px 50px;
+}
+
+.details-content {
+    padding: 14px 18px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    color: var(--text-primary);
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 28px;
+}
+
+.details-grid > section {
+    min-width: 0;
+}
+
+.details-content h4 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    font-stretch: 88%;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-secondary);
+}
+
+.details-count {
+    margin-left: 4px;
+    font-family: var(--font-data);
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--text-muted);
+}
+
+.details-note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+/* Long package lists scroll inside their column rather than pushing the
+   rest of the table down a screen. */
+.updates-scroll {
+    max-height: 232px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-top: 1px solid var(--border-color);
+}
+
+.updates-table {
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+}
+
+.updates-table td {
+    padding: 4px 12px 4px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-family: var(--font-data);
+    font-size: 11.5px;
+    font-stretch: 87.5%;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.updates-table td:first-child {
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.updates-table td:last-child {
+    padding-right: 0;
+    color: var(--text-muted);
+}
+
+.updates-table tbody tr,
+.updates-table tbody tr:hover {
+    background: transparent;
+}
+
+.details-remove {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.details-silent {
+    font-size: 12px;
+    color: var(--accent-orange);
+}
+
+.details-remove .delete-system-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* The tape                                                            */
+/*                                                                     */
+/* Update status is a printed label: square-cut ends, a sheen of        */
+/* laminate, a hairline shadow where it sits proud of the metal.       */
+/* "Up to date" is the one status that is not tape at all — a healthy  */
+/* host needs no label, so it is quiet text.                           */
+/* ------------------------------------------------------------------ */
+
+.update-badge {
+    display: inline-block;
+    padding: 3px 10px 2px;
+    font-family: var(--font-label);
+    font-size: 11px;
+    font-weight: 750;
+    font-stretch: 92%;
+    letter-spacing: 0.08em;
+    word-spacing: 0.2em;
+    text-transform: uppercase;
+    line-height: 1.5;
+    white-space: nowrap;
+    border-radius: 1.5px;
+}
+
+.update-available,
+.priority-high,
+.priority-medium,
+.priority-low,
+.status-unknown {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 50%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.update-available,
 .priority-medium {
-    background: rgba(210, 153, 34, 0.15) !important;
-    border: 1px solid var(--accent-yellow) !important;
-    color: var(--accent-yellow) !important;
+    background-color: var(--tape-yellow);
+    color: var(--tape-ink);
+}
+
+/* Security updates: red tape, white print. No pulsing — red tape on a
+   petrol rack is already the loudest thing in the room. */
+.priority-high {
+    background-color: var(--tape-red);
+    color: var(--tape-ink-light);
 }
 
 .priority-low {
-    background: rgba(88, 166, 255, 0.15) !important;
-    border: 1px solid var(--accent-blue) !important;
-    color: var(--accent-blue) !important;
+    background-color: var(--tape-blue);
+    color: var(--tape-ink-light);
 }
 
+/* Unknown: white tape, the label-maker's default — printed, but saying
+   nothing about the host. */
+.status-unknown {
+    background-color: var(--tape-white);
+    color: #4a5250;
+}
+
+.up-to-date,
 .priority-none {
-    background: rgba(63, 185, 80, 0.15) !important;
-    border: 1px solid var(--accent-green) !important;
-    color: var(--accent-green) !important;
+    padding-left: 0;
+    padding-right: 0;
+    color: var(--accent-green);
+    background: none;
+    box-shadow: none;
 }
 
-/* Pulsing animation for high priority updates */
-@keyframes pulse {
-    0%, 100% { 
-        transform: scale(1); 
-        opacity: 1; 
-    }
-    50% { 
-        transform: scale(1.02); 
-        opacity: 0.9; 
-    }
+.up-to-date::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 7px;
+    vertical-align: 1px;
+    border-radius: 50%;
+    background: currentColor;
 }
 
-/* OS icon styling */
+/* ------------------------------------------------------------------ */
+/* Indicators beside cell contents                                     */
+/* ------------------------------------------------------------------ */
+
+/* The OS name is the one cell allowed to wrap: "Fedora Linux 44 (Server
+   Edition)" is the longest thing in a row, and the actions column needs the
+   room more than it needs to sit on one line. */
 .os-cell {
-    white-space: nowrap;
+    min-width: 150px;
 }
 
 .os-icon {
     display: inline-block;
-    width: 20px;
-    height: 20px;
-    margin: 0;
-    padding: 0;
+    width: 18px;
+    height: 18px;
     margin-right: 8px;
     vertical-align: middle;
     object-fit: contain;
 }
 
 .os-text {
-    display: inline-block;
-    line-height: 1.5;
     vertical-align: middle;
 }
 
-/* Stale check-in indicator styles */
+/* A host the server has not heard from lately fades back into the rack. */
 .stale-checkin {
-    opacity: 0.6;
+    opacity: 0.55;
 }
 
 .stale-checkin:hover {
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
 .stale-checkin td {
@@ -471,35 +767,25 @@ th.sortable.descending::after {
 .stale-indicator {
     color: var(--accent-orange);
     margin-right: 6px;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 /* Marks an update badge whose underlying data is incomplete or old, so a
    confident-looking "Up to date" is visibly qualified. */
 .data-warning-indicator {
     color: var(--accent-orange);
-    margin-left: 4px;
-    font-size: 14px;
-}
-
-.update-check-warnings {
-    margin: 12px 0;
-    padding: 10px 14px;
-    border-left: 3px solid var(--accent-orange);
-    background: rgba(255, 165, 0, 0.08);
-    border-radius: 4px;
-}
-
-.update-check-warnings h4 {
-    margin: 0 0 6px;
-    color: var(--accent-orange);
-    font-size: 14px;
-}
-
-.update-check-warnings ul {
-    margin: 0;
-    padding-left: 20px;
+    margin-left: 6px;
     font-size: 13px;
+}
+
+/* Reboot-required indicator shown next to a hostname. Like the tailnet dot,
+   it leaves the cursor alone: it reads as part of the hostname cell, and a
+   question-mark pointer flickering as the mouse crosses it is more
+   distracting than the hover explanation is worth. */
+.reboot-indicator {
+    color: var(--accent-orange);
+    font-weight: 700;
+    margin-left: 2px;
 }
 
 /* Marks a host that is rebooting, in place of its reboot-required flag. It
@@ -508,7 +794,7 @@ th.sortable.descending::after {
 .rebooting-indicator {
     color: var(--accent-blue);
     margin-left: 4px;
-    font-size: 14px;
+    font-size: 13px;
     animation: update-run-pulse 2s ease-in-out infinite;
 }
 
@@ -520,358 +806,74 @@ th.sortable.descending::after {
 /* Marks a host with an update run in progress, alongside its update badge. */
 .update-running-indicator {
     color: var(--accent-blue);
-    margin-left: 4px;
-    font-size: 14px;
-}
-
-/* The record of the last dashboard-triggered update run, in the expanded
-   details. Colour carries the outcome, matching the badges in the table:
-   blue while it runs, green when it worked, red when it did not, orange when
-   the client stopped reporting and the outcome is unknown. */
-.update-run {
-    margin: 20px 0 0;
-    padding: 10px 14px;
-    border-left: 3px solid var(--border-color);
-    background: var(--bg-tertiary);
-    border-radius: 4px;
-}
-
-.update-run h4 {
-    margin: 0 0 6px;
-    font-size: 14px;
-}
-
-.update-run p {
-    margin: 0;
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-
-.update-run-running {
-    border-left-color: var(--accent-blue);
-}
-
-.update-run-running h4 {
-    color: var(--accent-blue);
-}
-
-.update-run-succeeded {
-    border-left-color: var(--accent-green);
-}
-
-.update-run-succeeded h4 {
-    color: var(--accent-green);
-}
-
-.update-run-failed {
-    border-left-color: var(--accent-red);
-}
-
-.update-run-failed h4 {
-    color: var(--accent-red);
-}
-
-.update-run-unknown {
-    border-left-color: var(--accent-orange);
-}
-
-.update-run-unknown h4 {
-    color: var(--accent-orange);
-}
-
-/* The command's output. Open while the run streams and on a failure, where it
-   is the answer; collapsed after a success, where it is a few hundred lines of
-   package names. */
-.update-run-output {
-    margin-top: 8px;
+    margin-left: 6px;
     font-size: 13px;
 }
 
-.update-run-output summary {
-    cursor: pointer;
-    color: var(--text-secondary);
-}
+/* Fixed-width gutter the tailnet dot sits in, ahead of the hostname. Holding
+   the width whether or not the host has a dot keeps hostnames aligned down the
+   column, and it gives the 8px dot a hover target big enough to land on.
 
-.update-run-output pre {
-    /* Keep a scroll gesture inside the pane. Without this, reaching the top or
-       the bottom hands the rest of the scroll to the page, which throws the
-       reader out of the output they were following. */
-    overscroll-behavior: contain;
-    margin: 8px 0 0;
-    padding: 10px 12px;
-    max-height: 320px;
-    overflow: auto;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 12px;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-/* Marks the pane as following a run in progress rather than showing a record
-   of one that ended. */
-.update-run-live {
+   The slot deliberately does not set cursor: help. The dot is part of the
+   hostname cell rather than an annotation stuck onto it, and a question-mark
+   pointer appearing as the mouse crosses the gutter on the way to the hostname
+   is more distracting than the tooltip is worth. */
+.tailnet-slot {
     display: inline-block;
-    margin-left: 8px;
-    padding: 1px 7px;
-    border-radius: 10px;
-    background: rgba(88, 166, 255, 0.15);
-    border: 1px solid var(--accent-blue);
-    color: var(--accent-blue);
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    animation: update-run-pulse 2s ease-in-out infinite;
+    width: 16px;
+    height: 1.5em;
+    line-height: 1.5em;
+    vertical-align: middle;
 }
 
-@keyframes update-run-pulse {
-    50% { opacity: 0.45; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .update-run-live,
-    .rebooting-indicator {
-        animation: none;
-    }
-}
-
-.update-run-waiting {
-    color: var(--text-muted);
-    font-style: italic;
-}
-
-/* Run-updates button: it patches a live host, so it reads as an action rather
-   than a link, but it is not destructive the way delete is. */
-.run-update-btn {
-    background: rgba(88, 166, 255, 0.15) !important;
-    border: 1px solid var(--accent-blue) !important;
-    color: var(--accent-blue) !important;
-    margin-right: 8px;
-    transition: all 0.2s ease;
-}
-
-.run-update-btn:hover:not(:disabled) {
-    background: rgba(88, 166, 255, 0.25) !important;
-    border-color: var(--accent-blue) !important;
-    color: var(--accent-blue) !important;
-}
-
-.run-update-btn:disabled {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-muted) !important;
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-/* Check-in button styles. Green rather than the update button's blue: the two
-   sit side by side and the quieter action should not read as the same weight. */
-.check-in-btn {
-    background: rgba(63, 185, 80, 0.15) !important;
-    border: 1px solid var(--accent-green) !important;
-    color: var(--accent-green) !important;
-    margin-right: 8px;
-    transition: all 0.2s ease;
-}
-
-.check-in-btn:hover:not(:disabled) {
-    background: rgba(63, 185, 80, 0.25) !important;
-    border-color: var(--accent-green) !important;
-    color: var(--accent-green) !important;
-}
-
-.check-in-btn:disabled {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-muted) !important;
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-/* Reboot controls: a confirmation checkbox and the button it arms. Orange —
-   more consequential than patching, less than deleting the record. The
-   checkbox is the confirmation, so there is no dialog. */
-.reboot-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-right: 8px;
-}
-
-.reboot-arm {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-}
-
-.reboot-arm input {
-    margin: 0;
-    accent-color: var(--accent-orange);
-    cursor: pointer;
-}
-
-.reboot-arm.disabled,
-.reboot-arm.disabled input {
-    color: var(--text-muted);
-    cursor: not-allowed;
+/* Tailnet membership dot. Green when the host is on a tailnet right now, grey
+   when it belongs to one but is not connected. Hosts that have never reported
+   tailnet membership render no dot at all, so this is invisible to fleets that
+   do not use Tailscale. */
+.tailnet-indicator {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: var(--text-muted);
     opacity: 0.6;
 }
 
-.reboot-btn {
-    background: rgba(240, 136, 62, 0.15) !important;
-    border: 1px solid var(--accent-orange) !important;
-    color: var(--accent-orange) !important;
-    transition: all 0.2s ease;
+.tailnet-indicator.connected {
+    background: var(--accent-green);
+    opacity: 1;
 }
 
-.reboot-btn:hover:not(:disabled) {
-    background: rgba(240, 136, 62, 0.25) !important;
-    border-color: var(--accent-orange) !important;
-    color: var(--accent-orange) !important;
+/* Standalone in the expanded details, where it needs its own spacing. */
+.system-info .tailnet-indicator {
+    margin-right: 6px;
 }
 
-.reboot-btn:disabled {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-muted) !important;
-    cursor: not-allowed;
-    opacity: 0.5;
+/* The dd below sets word-break: break-word for long values like CPU model
+   names, which would otherwise break an address mid-octet. Keep the tailnet
+   address whole and on the same line as the tailnet it belongs to. */
+.system-info .tailnet-address {
+    white-space: nowrap;
 }
 
-/* Delete button styles */
-.delete-system-btn {
-    background: rgba(248, 81, 73, 0.15) !important;
-    border: 1px solid var(--accent-red) !important;
-    color: var(--accent-red) !important;
-    transition: all 0.2s ease;
-}
+/* ------------------------------------------------------------------ */
+/* Hover explanations                                                  */
+/*                                                                     */
+/* Drawn here rather than left to the title attribute. Every check-in  */
+/* from any host re-renders the whole table, and a browser abandons a  */
+/* pending native tooltip when the element under the pointer is        */
+/* replaced — it will not start the timer again until the mouse moves, */
+/* so these explanations mostly never appeared. A :hover rule is       */
+/* re-evaluated against the replacement immediately, so they survive a */
+/* re-render.                                                          */
+/*                                                                     */
+/* The panel opens upward: the first row has a sticky header's worth  */
+/* of room above it, the last row has nothing below. That is also why */
+/* these stay one line. The z-index clears the sticky header, which    */
+/* the first row's panel does overlap.                                 */
+/* ------------------------------------------------------------------ */
 
-.delete-system-btn:hover:not(:disabled) {
-    background: rgba(248, 81, 73, 0.25) !important;
-    border-color: var(--accent-red) !important;
-    color: var(--accent-red) !important;
-}
-
-.delete-system-btn:disabled {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-muted) !important;
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-/* Floating footer styles */
-.floating-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(13, 17, 23, 0.95);
-    border-top: 1px solid var(--border-color);
-    padding: 12px 20px;
-    text-align: center;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
-    z-index: 100;
-    backdrop-filter: blur(12px);
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-
-[data-theme="light"] .floating-footer {
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.floating-footer a {
-    color: var(--accent-blue);
-    text-decoration: none;
-    font-size: 13px;
-    transition: color 0.2s ease;
-    font-weight: 500;
-}
-
-.floating-footer a:hover {
-    color: var(--accent-blue-hover);
-    text-decoration: underline;
-}
-
-.floating-footer .separator {
-    margin: 0 12px;
-    color: var(--text-muted);
-}
-
-/* Theme toggle button */
-.theme-toggle {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 20px;
-    transition: all 0.2s ease;
-    z-index: 200;
-    font-family: inherit;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    box-shadow: var(--shadow-sm);
-}
-
-.theme-toggle:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-blue);
-    transform: scale(1.05);
-}
-
-.theme-toggle:active {
-    transform: scale(0.95);
-}
-
-@media (max-width: 768px) {
-    .theme-toggle {
-        top: 10px;
-        right: 10px;
-        width: 36px;
-        height: 36px;
-        font-size: 18px;
-    }
-}
-
-/* Reboot-required indicator shown next to a hostname. Like the tailnet dot,
-   it leaves the cursor alone: it reads as part of the hostname cell, and a
-   question-mark pointer flickering as the mouse crosses it is more
-   distracting than the hover explanation is worth. */
-.reboot-indicator {
-    color: var(--accent-orange);
-    font-weight: 700;
-}
-
-/* Hover explanations, drawn here rather than left to the title attribute.
-   Every check-in from any host re-renders the whole table, and a browser
-   abandons a pending native tooltip when the element under the pointer is
-   replaced — it will not start the timer again until the mouse moves, so these
-   explanations mostly never appeared. A :hover rule is re-evaluated against the
-   replacement immediately, so they survive a re-render.
-
-   The panel opens upward. The table clips its overflow to keep its rounded
-   corners, so a panel that opened downward would be cut off by the bottom edge
-   on the last row; opening up puts the only tight spot on the first row, where
-   there is a whole sticky header's worth of room to grow into. That is also why
-   these stay one line: two would start to reach past the top of the table on
-   the first row. The z-index clears the sticky header, which the first row's
-   panel does overlap. */
 [data-tooltip] {
     position: relative;
 }
@@ -883,13 +885,14 @@ th.sortable.descending::after {
     bottom: calc(100% + 6px);
     z-index: 20;
     padding: 6px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+    background: var(--text-primary);
     box-shadow: var(--shadow-md);
-    color: var(--text-primary);
+    color: var(--bg-primary);
+    font-family: var(--font-label);
     font-size: 12px;
-    font-weight: 400;
+    font-weight: 500;
+    font-stretch: 100%;
     line-height: 1.4;
     letter-spacing: 0;
     text-transform: none;
@@ -922,175 +925,335 @@ th.sortable.descending::after {
     right: 0;
 }
 
-/* Fixed-width gutter the tailnet dot sits in, ahead of the hostname. Holding
-   the width whether or not the host has a dot keeps hostnames aligned down the
-   column, and it gives the 8px dot a hover target big enough to land on.
-
-   The slot deliberately does not set cursor: help. The dot is part of the
-   hostname cell rather than an annotation stuck onto it, and a question-mark
-   pointer appearing as the mouse crosses the gutter on the way to the hostname
-   is more distracting than the tooltip is worth. */
-.tailnet-slot {
-    display: inline-block;
-    width: 16px;
-    height: 1.5em;
-    line-height: 1.5em;
-    vertical-align: middle;
-}
-
-/* Tailnet membership dot. Green when the host is on a tailnet right now, grey
-   when it belongs to one but is not connected. Hosts that have never reported
-   tailnet membership render no dot at all, so this is invisible to fleets that
-   do not use Tailscale. */
-.tailnet-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    vertical-align: middle;
-    background: var(--text-secondary);
-    opacity: 0.45;
-}
-
-/* Standalone in the expanded details, where it needs its own spacing. */
-.system-info .tailnet-indicator {
-    margin-right: 6px;
-}
-
-/* The dd above sets word-break: break-word for long values like CPU model
-   names, which would otherwise break an address mid-octet. Keep the tailnet
-   address whole and on the same line as the tailnet it belongs to. */
-.system-info .tailnet-address {
-    white-space: nowrap;
-}
-
-.tailnet-indicator.connected {
-    background: var(--accent-green);
-    opacity: 1;
-}
-
-/* System information block inside the expanded per-host details. */
-.system-info {
-    margin-top: 16px;
-}
-
-.system-info h4 {
-    margin: 0 0 12px;
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-secondary);
-}
-
-/* Two-column key/value grid: labels in a muted column, values in a bold
-   primary column that left-justifies (including when a long value wraps).
-
-   The grid takes the full width of the expanded row. It used to stop at
-   560px, which left the value column barely 380px wide and wrapped anything
-   longer — a tailnet with its MagicDNS suffix and address, or most CPU model
-   names — while the rest of the row sat empty. Values start at the same x
-   either way, since the label column is sized to its own content, so the
-   wider grid costs nothing in how far the eye travels from label to value. */
-.system-info dl {
+/* Compact key/value list: label column sized to its content, values
+   left-aligned beside it. */
+dl.system-info {
     display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 0 32px;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0 16px;
     margin: 0;
+    border-top: 1px solid var(--border-color);
+}
+
+.system-info dt,
+.system-info dd {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .system-info dt {
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: 11px;
     font-weight: 600;
+    font-stretch: 92%;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
-    padding: 8px 0;
-    align-self: center;
-    border-bottom: 1px solid var(--border-color);
+    letter-spacing: 0.08em;
 }
 
 .system-info dd {
     margin: 0;
     color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 600;
-    text-align: left;
+    font-family: var(--font-data);
+    font-size: 11.5px;
     word-break: break-word;
-    padding: 8px 0;
-    align-self: center;
-    border-bottom: 1px solid var(--border-color);
 }
 
-/* Drop the divider under the final key/value pair. */
-.system-info dl > dt:last-of-type,
-.system-info dl > dd:last-of-type {
-    border-bottom: none;
+/* ------------------------------------------------------------------ */
+/* Per-host details: warnings and update runs                          */
+/* ------------------------------------------------------------------ */
+
+.update-check-warnings {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--tape-orange);
+    background: var(--bg-tertiary);
+    border-radius: 0 var(--radius) var(--radius) 0;
 }
 
+.update-check-warnings h4 {
+    margin: 0 0 6px;
+    color: var(--accent-orange);
+    font-size: 13px;
+}
+
+.update-check-warnings ul {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13px;
+}
+
+/* The record of the last dashboard-triggered update run, in the expanded
+   details. The edge carries the outcome in tape colour, matching the table:
+   blue while it runs, green when it worked, red when it did not, orange when
+   the client stopped reporting and the outcome is unknown. */
+.update-run {
+    margin: 14px 0 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--border-strong);
+    background: var(--bg-tertiary);
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.update-run h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.update-run p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.update-run-running { border-left-color: var(--tape-blue); }
+.update-run-running h4 { color: var(--accent-blue); }
+.update-run-succeeded { border-left-color: var(--tape-green); }
+.update-run-succeeded h4 { color: var(--accent-green); }
+.update-run-failed { border-left-color: var(--tape-red); }
+.update-run-failed h4 { color: var(--accent-red); }
+.update-run-unknown { border-left-color: var(--tape-orange); }
+.update-run-unknown h4 { color: var(--accent-orange); }
+
+/* The command's output. Open while the run streams and on a failure, where it
+   is the answer; collapsed after a success, where it is a few hundred lines of
+   package names. */
+.update-run-output {
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+.update-run-output summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.update-run-output pre {
+    /* Keep a scroll gesture inside the pane. Without this, reaching the top or
+       the bottom hands the rest of the scroll to the page, which throws the
+       reader out of the output they were following. */
+    overscroll-behavior: contain;
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    max-height: 320px;
+    overflow: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    font-family: var(--font-data);
+    font-size: 11.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Marks the pane as following a run in progress rather than showing a record
+   of one that ended: a small strip of blue tape. */
+.update-run-live {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 1.5px;
+    background: var(--tape-blue);
+    color: var(--tape-ink-light);
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    vertical-align: 1px;
+    animation: update-run-pulse 2s ease-in-out infinite;
+}
+
+@keyframes update-run-pulse {
+    50% { opacity: 0.45; }
+}
+
+.update-run-waiting {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* The group strip's reboot keeps its labelled checkbox: it acts on many
+   hosts at once, so the confirmation says so in words. */
+.group-actions .reboot-controls {
+    border: none;
+    gap: 8px;
+}
+
+.reboot-arm {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.reboot-arm input {
+    margin: 0;
+    width: auto;
+    padding: 0;
+    accent-color: var(--tape-orange);
+}
+
+.reboot-arm.disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------ */
+/* Modal                                                               */
+/* ------------------------------------------------------------------ */
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    padding: 24px;
+    border-radius: 4px;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    max-width: 500px;
+    width: 90%;
+    color: var(--text-primary);
+}
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 12, 14, 0.7);
+    backdrop-filter: blur(3px);
+    z-index: 999;
+}
+
+[data-theme="light"] .modal-overlay {
+    background: rgba(15, 31, 34, 0.4);
+}
+
+/* ------------------------------------------------------------------ */
+/* Footer                                                              */
+/* ------------------------------------------------------------------ */
+
+.floating-footer {
+    margin-top: auto;
+    width: 100%;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 18px 24px 24px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 0;
+}
+
+.floating-footer a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border-strong);
+}
+
+.floating-footer a:hover {
+    color: var(--text-primary);
+    border-bottom-color: var(--text-primary);
+}
+
+.floating-footer .separator {
+    margin: 0 12px;
+    color: var(--border-strong);
+}
 
 /* ------------------------------------------------------------------ */
 /* Groups                                                              */
-/*                                                                     */
-/* Everything here is built from the theme's custom properties, so the */
-/* light theme needs no overrides of its own: the variables are        */
-/* already redefined under [data-theme="light"] above. The two         */
-/* literal rgba() colours below are the outcome pills, which need a    */
-/* translucent wash over whatever the background happens to be.        */
 /* ------------------------------------------------------------------ */
 
 .group-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     max-width: 1400px;
-    margin: 0 auto 12px auto;
-    padding: 0 20px;
+    margin: 0 auto 10px;
+    padding: 0 24px;
 }
 
 .group-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
+    gap: 7px;
+    padding: 5px 11px;
+    font-family: var(--font-label);
     font-size: 13px;
-    font-family: inherit;
-    border-radius: 14px;
+    font-weight: 600;
+    font-stretch: 94%;
+    border-radius: var(--radius);
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-.group-chip:hover {
+.group-chip:hover:not(:disabled) {
     background: var(--bg-hover);
     color: var(--text-primary);
-    border-color: var(--accent-blue);
+    border-color: var(--border-strong);
 }
 
-.group-chip.active {
-    background: var(--bg-tertiary);
-    border-color: var(--accent-blue);
-    color: var(--accent-blue);
-    font-weight: 500;
+/* The group being looked at is labelled the way the title is: in tape. */
+.group-chip.active,
+.group-chip.active:hover:not(:disabled) {
+    background: var(--tape-yellow);
+    border-color: var(--tape-yellow);
+    color: var(--tape-ink);
 }
 
 .group-count {
-    font-size: 11px;
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 500;
     color: var(--text-muted);
-    background: var(--bg-primary);
-    border-radius: 9px;
-    padding: 1px 6px;
 }
 
 .group-chip.active .group-count {
-    color: var(--accent-blue);
+    color: rgba(21, 20, 15, 0.65);
 }
 
 .group-chip.new-group-btn {
     border-style: dashed;
     color: var(--text-muted);
+    background: transparent;
+}
+
+/* Derived groups: computed by the server from what the hosts report, rather
+   than curated. A dashed outline and dimmer text so the bar reads as two
+   kinds of thing — facts about the fleet, and decisions about it — without
+   needing a legend. */
+.group-chip.derived {
+    border-style: dashed;
+    color: var(--text-muted);
+    background: transparent;
+}
+
+.group-chip.derived:hover:not(:disabled) {
+    color: var(--text-secondary);
+}
+
+.group-chip.derived.active,
+.group-chip.derived.active:hover:not(:disabled) {
+    border-style: solid;
+    background: var(--tape-yellow);
+    color: var(--tape-ink);
 }
 
 /* The strip of things that act on the whole group. It is deliberately
@@ -1102,12 +1265,14 @@ th.sortable.descending::after {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    max-width: 1400px;
-    margin: 0 auto 12px auto;
-    padding: 10px 20px;
+    width: calc(100% - 48px);
+    max-width: 1352px;
+    margin: 0 auto 10px;
+    padding: 10px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-left: 3px solid var(--tape-yellow);
+    border-radius: var(--radius);
 }
 
 .group-action-summary {
@@ -1116,11 +1281,13 @@ th.sortable.descending::after {
     gap: 10px;
     color: var(--text-primary);
     font-size: 14px;
+    font-weight: 600;
 }
 
 .group-member-count,
 .group-ghost-note {
     font-size: 12px;
+    font-weight: 400;
     color: var(--text-secondary);
 }
 
@@ -1128,6 +1295,14 @@ th.sortable.descending::after {
    dropped: "7 members, 5 rows" with no explanation costs an afternoon. */
 .group-ghost-note {
     color: var(--accent-yellow);
+    cursor: help;
+}
+
+.group-derived-note {
+    font-size: 12px;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--text-muted);
     cursor: help;
 }
 
@@ -1140,28 +1315,7 @@ th.sortable.descending::after {
 
 .group-action-btn,
 .group-edit-btn {
-    font-family: inherit;
-    font-size: 13px;
     padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.group-action-btn:hover:not(:disabled),
-.group-edit-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--accent-blue);
-}
-
-.group-action-btn:disabled,
-.group-edit-btn:disabled {
-    color: var(--text-muted);
-    cursor: not-allowed;
-    opacity: 0.5;
 }
 
 .group-edit-btn {
@@ -1173,12 +1327,13 @@ th.sortable.descending::after {
    until dismissed, because a reboot that skipped two hosts is something
    to keep reading while you go and look at them. */
 .group-action-report {
-    max-width: 1400px;
-    margin: 0 auto 12px auto;
-    padding: 10px 20px;
+    width: calc(100% - 48px);
+    max-width: 1352px;
+    margin: 0 auto 10px;
+    padding: 10px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: 13px;
 }
 
@@ -1188,24 +1343,25 @@ th.sortable.descending::after {
     justify-content: space-between;
     gap: 12px;
     color: var(--text-primary);
+    font-weight: 600;
 }
 
-.group-report-dismiss {
+button.group-report-dismiss {
     background: none;
     border: none;
     color: var(--text-muted);
     font-size: 14px;
-    cursor: pointer;
     padding: 0 4px;
 }
 
-.group-report-dismiss:hover {
+button.group-report-dismiss:hover {
+    background: none;
     color: var(--text-primary);
 }
 
 .group-report-list {
     list-style: none;
-    margin: 10px 0 0 0;
+    margin: 10px 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;
@@ -1215,43 +1371,45 @@ th.sortable.descending::after {
 .group-report-list li {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: 10px;
 }
 
+/* Outcomes are tape too: green took it, white skipped it, red did not. */
 .outcome-pill {
     flex: 0 0 auto;
-    min-width: 88px;
+    min-width: 92px;
     text-align: center;
-    font-size: 11px;
+    font-size: 10px;
+    font-weight: 750;
+    font-stretch: 92%;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    border: 1px solid transparent;
+    letter-spacing: 0.08em;
+    padding: 2px 8px 1px;
+    border-radius: 1.5px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 1px rgba(0, 0, 0, 0.25);
 }
 
 .outcome-pill.accepted {
-    background: rgba(63, 185, 80, 0.15);
-    border-color: var(--accent-green);
-    color: var(--accent-green);
+    background: var(--tape-green);
+    color: var(--tape-ink);
 }
 
 .outcome-pill.skipped {
-    background: var(--bg-tertiary);
-    border-color: var(--border-color);
-    color: var(--text-secondary);
+    background: var(--tape-white);
+    color: #4a5250;
 }
 
 .outcome-pill.refused,
 .outcome-pill.unreachable,
 .outcome-pill.failed {
-    background: rgba(248, 81, 73, 0.15);
-    border-color: var(--accent-red);
-    color: var(--accent-red);
+    background: var(--tape-red);
+    color: var(--tape-ink-light);
 }
 
 .outcome-host {
-    font-weight: 500;
+    font-family: var(--font-data);
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-primary);
 }
 
@@ -1269,34 +1427,34 @@ th.sortable.descending::after {
    colspan is hardcoded in three places and its header is hand-written. */
 .host-group-chip {
     display: inline-block;
-    margin-left: 5px;
-    padding: 1px 7px;
+    margin-left: 6px;
+    padding: 0 6px;
+    font-family: var(--font-label);
     font-size: 11px;
-    border-radius: 9px;
-    background: var(--bg-tertiary);
+    font-weight: 500;
+    font-stretch: 92%;
+    line-height: 18px;
+    border-radius: 2px;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    vertical-align: middle;
+    vertical-align: 1px;
 }
 
-/* The per-host editor in the expanded row. Groups are a property of the
-   host, so this sits with the system information, not in the actions. */
-.group-editor {
-    margin-top: 16px;
+.host-group-chip.derived {
+    border-style: dashed;
+    color: var(--text-muted);
 }
 
-.group-editor h4 {
-    margin: 0 0 8px 0;
-    font-size: 13px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+/* The per-host group editor in the expanded row. Groups are a property of
+   the host, so this sits with the system information, not in the actions. */
+.group-editor-option.saving {
+    opacity: 0.55;
 }
 
 .group-editor-options {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 6px 14px;
 }
 
 .group-editor-option {
@@ -1311,76 +1469,12 @@ th.sortable.descending::after {
 
 .group-editor-option input {
     margin: 0;
-    accent-color: var(--accent-blue);
+    accent-color: var(--tape-yellow);
     cursor: pointer;
 }
 
 .group-editor-empty {
     font-size: 13px;
-    color: var(--text-muted);
-}
-
-.group-editor-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.save-groups-btn {
-    font-family: inherit;
-    font-size: 13px;
-    padding: 5px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    cursor: pointer;
-}
-
-.save-groups-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--accent-blue);
-}
-
-.save-groups-btn:disabled {
-    color: var(--text-muted);
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-.group-editor-dirty {
-    font-size: 12px;
-    color: var(--accent-yellow);
-}
-
-/* Derived groups: computed by the server from what the hosts report, rather
-   than curated. Marked with a diamond and a dimmer, dashed outline so the bar
-   reads as two kinds of thing — facts about the fleet, and decisions about
-   it — without needing a legend. */
-.group-chip.derived {
-    border-style: dashed;
-    color: var(--text-muted);
-}
-
-.group-chip.derived:hover {
-    color: var(--text-secondary);
-}
-
-.group-chip.derived.active {
-    border-style: solid;
-    color: var(--accent-blue);
-}
-
-.group-derived-note {
-    font-size: 12px;
-    font-style: italic;
-    color: var(--text-muted);
-    cursor: help;
-}
-
-.host-group-chip.derived {
-    border-style: dashed;
     color: var(--text-muted);
 }
 
@@ -1395,7 +1489,90 @@ th.sortable.descending::after {
 .group-editor-derived-label {
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
     margin-right: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars                                                          */
+/* ------------------------------------------------------------------ */
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 5px;
+    border: 2px solid var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+}
+
+/* ------------------------------------------------------------------ */
+/* Small screens and reduced motion                                    */
+/* ------------------------------------------------------------------ */
+
+/* Below tablet width the table scrolls sideways inside its own frame
+   rather than pushing the page wider than the screen. */
+@media (max-width: 900px) {
+    .masthead {
+        padding: 24px 16px 16px;
+    }
+
+    h1 {
+        font-size: 22px;
+    }
+
+    .group-bar {
+        padding: 0 16px;
+    }
+
+    table,
+    .group-actions,
+    .group-action-report {
+        width: calc(100% - 32px);
+    }
+
+    table {
+        display: block;
+        overflow-x: auto;
+        font-size: 13px;
+    }
+
+    th, td {
+        padding: 9px 10px;
+    }
+
+    .details-row > td {
+        padding: 0 10px 10px;
+    }
+
+    .details-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 18px;
+    }
+
+    .floating-footer {
+        padding: 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .update-run-live,
+    .rebooting-indicator {
+        animation: none;
+    }
+
+    * {
+        transition: none !important;
+    }
 }

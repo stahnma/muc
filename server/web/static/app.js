@@ -22,11 +22,20 @@ document.addEventListener("DOMContentLoaded", () => {
     // offer them never draws a button for them.
     let features = { remote_updates: false, remote_reboot: false };
 
-    const RUN_UPDATE_LABEL = "\u2b07\ufe0f Run updates now";
-    const REBOOT_LABEL = "\u23fb Reboot";
-    const REBOOT_WAITING_LABEL = "\u23f3 Rebooting\u2026";
-    const CHECK_IN_LABEL = "\ud83d\udd04 Check in now";
-    const CHECK_IN_WAITING_LABEL = "\u23f3 Checking in\u2026";
+    // Row-button labels. Short on purpose: these sit on every row of the
+    // table, and the column is only as wide as its longest label.
+    const RUN_UPDATE_LABEL = "Update";
+    const RUN_UPDATE_STARTING_LABEL = "Starting\u2026";
+    const RUN_UPDATE_RUNNING_LABEL = "Updating\u2026";
+    const REBOOT_LABEL = "Reboot";
+    const REBOOT_WAITING_LABEL = "Rebooting\u2026";
+    const CHECK_IN_LABEL = "Check in";
+    const CHECK_IN_WAITING_LABEL = "Checking\u2026";
+
+    // Hosts whose update request is in flight: between the click and the run
+    // record arriving over the WebSocket, a re-render would otherwise put the
+    // button back to "Update" and invite a second click.
+    const startingUpdates = new Set();
 
     // Check-ins asked for from here, keyed by hostname: {since, timer}. A
     // commanded check-in has no reply to wait for — the host says "will do" and
@@ -168,6 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // produces rather than by the request that asked for it.
                     resolveCheckIn(update);
                     resolvePendingReboot(update);
+                    if (isRunActive(update.last_update_run)) startingUpdates.delete(update.hostname);
 
                     // Keep the payload: the expanded row renders from it rather
                     // than fetching the same thing again a millisecond later.
@@ -333,10 +343,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // same reason armedReboots is: the bar is re-rendered whenever a host
     // checks in, and a tick that only lived in the markup would be lost.
     const armedGroupReboots = new Set();
-    // A host's part-edited group selection, held across the re-renders that an
-    // unrelated check-in causes. Without this, ticking two boxes and having a
-    // payload land in between silently discards the first tick.
-    const pendingGroupEdits = new Map();
+    // Hosts whose group membership is being saved. A tick saves at once, so
+    // the host's boxes are held disabled until the save lands: a second tick
+    // computed from the not-yet-updated groups would undo the first.
+    const savingGroups = new Set();
 
     const GROUP_CHECK_IN_LABEL = "🔄 Check in all";
     const GROUP_UPDATE_LABEL = "⬇️ Run updates";
@@ -707,8 +717,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // information and not in the actions footer.
     function groupEditorHTML(hostname) {
         const manual = manualGroups();
-        const selected = pendingGroupEdits.get(hostname) || new Set(manualGroupsForHost(hostname));
-        const dirty = pendingGroupEdits.has(hostname);
+        const selected = new Set(manualGroupsForHost(hostname));
+        const saving = savingGroups.has(hostname);
 
         // The derived memberships are shown but not offered as checkboxes: a
         // host joins os:fedora by being a Fedora box, and a tickbox that
@@ -718,60 +728,46 @@ document.addEventListener("DOMContentLoaded", () => {
             .map((g) => g.name);
         const derivedHTML = derivedNames.length
             ? `<div class="group-editor-derived">
-                <span class="group-editor-derived-label">Derived</span>
                 ${derivedNames.map((n) => `<span class="host-group-chip derived">◆${escapeHtml(n)}</span>`).join('')}
             </div>`
             : '';
 
+        // Each box saves as it is ticked. Membership is cheap to change and
+        // easy to change back, so a separate Save step only added a click and
+        // a way to lose an edit.
         const boxes = manual.length
             ? manual.map((group) => `
-                <label class="group-editor-option">
+                <label class="group-editor-option${saving ? ' saving' : ''}">
                     <input type="checkbox" class="group-member-checkbox"
                            data-hostname="${escapeHtml(hostname)}"
-                           data-group="${escapeHtml(group.name)}"${selected.has(group.name) ? ' checked' : ''}>
+                           data-group="${escapeHtml(group.name)}"${selected.has(group.name) ? ' checked' : ''}${saving ? ' disabled' : ''}>
                     ${escapeHtml(group.name)}
                 </label>`).join('')
-            : '<span class="group-editor-empty">No groups of your own yet. Create one from the bar above the table.</span>';
+            : '<span class="group-editor-empty">No groups of your own yet. Make one with + New group above the table.</span>';
 
         return `<div class="group-editor">
-            <h4>Groups</h4>
             <div class="group-editor-options">${boxes}</div>
-            ${manual.length ? `<div class="group-editor-actions">
-                <button class="save-groups-btn" data-hostname="${escapeHtml(hostname)}"${dirty ? '' : ' disabled'}>Save groups</button>
-                ${dirty ? '<span class="group-editor-dirty">unsaved</span>' : ''}
-            </div>` : ''}
             ${derivedHTML}
         </div>`;
     }
 
-    function handleGroupMemberToggle(event) {
-        const checkbox = event.currentTarget;
+    function handleGroupMemberToggle(checkbox) {
         const hostname = checkbox.dataset.hostname;
         const group = checkbox.dataset.group;
-        if (!hostname || !group) return;
+        if (!hostname || !group || savingGroups.has(hostname)) return;
 
-        const selected = pendingGroupEdits.get(hostname) || new Set(manualGroupsForHost(hostname));
+        const selected = new Set(manualGroupsForHost(hostname));
         if (checkbox.checked) {
             selected.add(group);
         } else {
             selected.delete(group);
         }
-        pendingGroupEdits.set(hostname, selected);
 
-        const editor = checkbox.closest('.group-editor');
-        const save = editor && editor.querySelector('.save-groups-btn');
-        if (save) save.disabled = false;
-    }
+        savingGroups.add(hostname);
+        checkbox.closest('.group-editor')
+            .querySelectorAll('.group-member-checkbox')
+            .forEach((box) => { box.disabled = true; });
 
-    function handleSaveGroups(event) {
-        const button = event.currentTarget;
-        const hostname = button.dataset.hostname;
-        if (!hostname) return;
-
-        const selected = pendingGroupEdits.get(hostname);
-        if (!selected) return;
-
-        button.disabled = true;
         fetch(`/api/systems/${encodeURIComponent(hostname)}/groups`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -782,22 +778,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!response.ok) {
                     throw new Error(body.error || `Could not save groups: ${response.status}`);
                 }
-                pendingGroupEdits.delete(hostname);
                 return fetchGroups();
             })
-            .then(() => renderSystems(Array.from(systemsData)))
             .catch((error) => {
-                button.disabled = false;
                 console.error(`Failed to save groups for ${hostname}:`, error);
                 alert(`Could not save groups for ${hostname}:\n\n${error.message}`);
+            })
+            .finally(() => {
+                savingGroups.delete(hostname);
+                renderSystems(Array.from(systemsData));
             });
-    }
-
-    // A collapsed row drops its half-finished edit, for the same reason it
-    // drops a ticked reboot confirmation: what is no longer on screen should
-    // not still be pending.
-    function discardGroupEdit(hostname) {
-        pendingGroupEdits.delete(hostname);
     }
 
     // Delegated listeners on the bar, the action strip and the report. They
@@ -1298,7 +1288,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const label = groupFilter === UNGROUPED ? 'Ungrouped' : groupFilter;
             systemsTable.innerHTML = `
                 <tr>
-                    <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                    <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
                         <div style="font-size: 16px; margin-bottom: 8px;">\u{1F50D}</div>
                         <div style="font-weight: 500; margin-bottom: 4px;">No hosts to show in ${escapeHtml(label)}</div>
                         <div style="font-size: 13px; opacity: 0.8;">Its members may not have checked in yet</div>
@@ -1312,7 +1302,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (systems.length === 0) {
             systemsTable.innerHTML = `
                 <tr>
-                    <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                    <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
                         <div style="font-size: 16px; margin-bottom: 8px;">📡</div>
                         <div style="font-weight: 500; margin-bottom: 4px;">No systems have checked in yet</div>
                         <div style="font-size: 13px; opacity: 0.8;">Systems will appear here automatically as they connect</div>
@@ -1364,7 +1354,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             : '';
                         return `
                     <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
-                        <td class="chevron-cell"><span class="chevron">▶</span></td>
+                        <td class="chevron-cell"><button class="chevron" aria-expanded="false" aria-label="Details for ${escapeHtml(system.hostname)}">▶</button></td>
                         <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${rebootIndicator(system)}${groupChips(system.hostname)}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
@@ -1388,9 +1378,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             ${isStale ? tooltipIcon('⚠️ ', 'stale-indicator', STALE_CHECKIN_TOOLTIP, 'right') : ''}
                             ${formatRelativeTime(system.last_seen || '')}
                         </td>
+                        <td class="actions-cell">${rowActionsHTML(system)}</td>
                     </tr>
                     <tr class="details-row" data-hostname="${escapeHtml(system.hostname)}" style="display: none;">
-                        <td colspan="8">
+                        <td colspan="9">
                             <div class="details-content">Loading...</div>
                         </td>
                     </tr>`;
@@ -1404,7 +1395,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Failed to generate table rows:", error);
             systemsTable.innerHTML = `
                 <tr>
-                    <td colspan="8" style="text-align: center; padding: 3rem; color: var(--accent-red);">
+                    <td colspan="9" style="text-align: center; padding: 3rem; color: var(--accent-red);">
                         <div style="font-size: 16px; margin-bottom: 8px;">⚠️</div>
                         <div style="font-weight: 500; margin-bottom: 4px;">Error rendering systems</div>
                         <div style="font-size: 13px; opacity: 0.8;">${escapeHtml(error.message)}</div>
@@ -1420,7 +1411,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
             if (detailsRow && chevron) {
                 detailsRow.style.display = "table-row";
-                chevron.textContent = "▼";
+                setChevron(chevron, true);
                 // Load details if not already loaded
                 const detailsContent = detailsRow.querySelector(".details-content");
                 if (!detailsContent.dataset.loaded || Date.now() - detailsContent.dataset.loadedTime > 60000) {
@@ -1670,55 +1661,78 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>`;
     }
 
+    // The actions on a host's row: check in, update, reboot. They sit on the
+    // row rather than in the expanded panel so the common jobs take one click
+    // (two for a reboot) without opening anything.
+    //
+    // A control the server does not offer at all is left out, so a fleet
+    // without remote updates never sees the column grow. A control the server
+    // offers but this host has not opted into is drawn disabled with the
+    // reason on hover: the column then reads down the table as "which hosts
+    // can I do this to", and every row keeps its buttons in the same place.
+    function rowActionsHTML(system) {
+        const hostname = system.hostname;
+        const host = escapeHtml(hostname);
+
+        const checkInPending = pendingCheckIns.has(hostname);
+        const checkIn = `<button class="check-in-btn" data-hostname="${host}"${checkInPending ? ' disabled' : ''}>` +
+            `${checkInPending ? CHECK_IN_WAITING_LABEL : CHECK_IN_LABEL}</button>`;
+
+        const runActive = isRunActive(system.last_update_run);
+        let update = '';
+        if (features.remote_updates) {
+            const starting = startingUpdates.has(hostname);
+            let blocker = '';
+            if (!system.remote_updates_enabled) {
+                blocker = 'Remote updates are turned off on this host';
+            } else if (!starting && !runActive && !system.updates_available && !system.update_status_unknown) {
+                blocker = 'Nothing to install';
+            }
+            const label = runActive ? RUN_UPDATE_RUNNING_LABEL : starting ? RUN_UPDATE_STARTING_LABEL : RUN_UPDATE_LABEL;
+            update = `<button class="run-update-btn" data-hostname="${host}"` +
+                `${blocker || runActive || starting ? ' disabled' : ''}` +
+                `${blocker ? ` data-tooltip="${escapeHtml(blocker)}" data-tooltip-align="right"` : ''}>${label}</button>`;
+        }
+
+        return `<div class="row-actions">${checkIn}${update}${rebootControlsHTML(system, runActive)}</div>`;
+    }
+
     // The reboot control is a checkbox and a button: the checkbox is the
     // confirmation, so a stray click on the button does nothing until the
-    // operator has ticked it. Both are drawn only where server and host have
-    // opted in, and both are disabled unless the host reports a reboot pending
-    // and nothing else is going on.
-    function rebootControlsHTML(hostname, data, runActive) {
-        if (!(features.remote_reboot && data.remote_reboot_enabled)) return '';
+    // operator has ticked it. Both are disabled unless the host has opted in,
+    // reports a reboot pending, and nothing else is going on.
+    function rebootControlsHTML(system, runActive) {
+        if (!features.remote_reboot) return '';
 
-        const reboot = data.last_reboot;
+        const hostname = system.hostname;
+        const reboot = system.last_reboot;
         const pending = pendingReboots.has(hostname);
         let blocker = '';
-        if (pending || isRebooting(reboot)) {
+        if (!system.remote_reboot_enabled) {
+            blocker = 'Remote reboot is turned off on this host';
+        } else if (pending || (isRebooting(reboot) && !isRebootOverdue(reboot))) {
             blocker = 'A reboot is in progress';
         } else if (runActive) {
             blocker = 'An update is running; reboot when it has finished';
-        } else if (!data.reboot_required) {
+        } else if (!system.reboot_required) {
             blocker = 'No reboot pending';
         }
         const armed = !blocker && armedReboots.has(hostname);
+        const label = pending || (isRebooting(reboot) && !isRebootOverdue(reboot)) ? REBOOT_WAITING_LABEL : REBOOT_LABEL;
+        const tip = blocker
+            ? ` data-tooltip="${escapeHtml(blocker)}" data-tooltip-align="right"`
+            : ` data-tooltip="Tick to confirm, then Reboot" data-tooltip-align="right"`;
 
-        const label = pending || isRebooting(reboot) ? REBOOT_WAITING_LABEL : REBOOT_LABEL;
-        return `<span class="reboot-controls"${blocker ? ` title="${escapeHtml(blocker)}"` : ''}>
-                    <label class="reboot-arm${blocker ? ' disabled' : ''}">
-                        <input type="checkbox" class="reboot-arm-checkbox" data-hostname="${escapeHtml(hostname)}"${armed ? ' checked' : ''}${blocker ? ' disabled' : ''}>
-                        Confirm reboot
-                    </label>
-                    <button class="reboot-btn" data-hostname="${escapeHtml(hostname)}"${armed ? '' : ' disabled'}>
-                        ${label}
-                    </button>
+        return `<span class="reboot-controls${blocker ? ' blocked' : ''}${armed ? ' armed' : ''}"${tip}>
+                    <input type="checkbox" class="reboot-arm-checkbox" data-hostname="${escapeHtml(hostname)}"
+                           aria-label="Confirm reboot of ${escapeHtml(hostname)}"${armed ? ' checked' : ''}${blocker ? ' disabled' : ''}>
+                    <button class="reboot-btn" data-hostname="${escapeHtml(hostname)}"${armed ? '' : ' disabled'}>${label}</button>
                 </span>`;
-    }
-
-    // Drop a host's confirmation. The details pane is kept across a collapse
-    // and re-expand rather than re-rendered, so the controls in it are reset
-    // here too — a checkbox that still looked ticked would arm nothing.
-    function disarmReboot(hostname) {
-        armedReboots.delete(hostname);
-        const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
-        if (!detailsRow) return;
-        const checkbox = detailsRow.querySelector('.reboot-arm-checkbox');
-        if (checkbox) checkbox.checked = false;
-        const button = detailsRow.querySelector('.reboot-btn');
-        if (button) button.disabled = true;
     }
 
     // The checkbox arms the button, and only for this render: the armed set
     // is what carries it across the next one.
-    function handleRebootArm(event) {
-        const checkbox = event.currentTarget;
+    function handleRebootArm(checkbox) {
         const hostname = checkbox.dataset.hostname;
         if (!hostname) return;
         if (checkbox.checked) {
@@ -1726,15 +1740,16 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             armedReboots.delete(hostname);
         }
-        const button = checkbox.closest('.reboot-controls').querySelector('.reboot-btn');
+        const controls = checkbox.closest('.reboot-controls');
+        controls.classList.toggle('armed', checkbox.checked);
+        const button = controls.querySelector('.reboot-btn');
         if (button) button.disabled = !checkbox.checked;
     }
 
     // Ask a host to reboot. The response says the host accepted, which is the
     // last thing it says before going down; its record follows over the
     // WebSocket, and its next check-in is what says it came back.
-    function handleReboot(event) {
-        const button = event.currentTarget;
+    function handleReboot(button) {
         const hostname = button.dataset.hostname;
         if (!hostname) {
             console.error("No hostname found for reboot button");
@@ -1805,19 +1820,22 @@ document.addEventListener("DOMContentLoaded", () => {
     // took the job; the run itself reports back over NATS and reaches this page
     // as an ordinary system update, which re-renders the panel.
     //
-    // No confirmation dialog: reaching this button already takes expanding the
-    // host's row and clicking a control that says what it does, so a second
-    // "are you sure?" only trains people to dismiss it.
-    function handleRunUpdate(event) {
-        const button = event.currentTarget;
+    // No confirmation dialog: the button says what it does, is only lit on a
+    // host that has opted in and has something to install, and a second "are
+    // you sure?" only trains people to dismiss it.
+    function handleRunUpdate(button) {
         const hostname = button.dataset.hostname;
         if (!hostname) {
             console.error("No hostname found for update button");
             return;
         }
 
+        // Held until the run record arrives (see the WebSocket handler) or,
+        // failing that, for long enough that a host that never started is
+        // offered again rather than stuck at "Starting…".
+        startingUpdates.add(hostname);
         button.disabled = true;
-        button.textContent = "Starting\u2026";
+        button.textContent = RUN_UPDATE_STARTING_LABEL;
 
         fetch(`/api/systems/${encodeURIComponent(hostname)}/update`, { method: 'POST' })
             .then((response) => response.json().catch(() => ({})).then((body) => ({ response, body })))
@@ -1826,13 +1844,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     throw new Error(body.error || `Update request failed: ${response.status}`);
                 }
                 console.log("Update started", body);
-                button.textContent = "\u23f3 Update running";
+                setTimeout(() => {
+                    if (startingUpdates.delete(hostname)) renderSystems(Array.from(systemsData));
+                }, 30000);
             })
             .catch((error) => {
                 console.error(`Failed to start update on ${hostname}:`, error);
+                startingUpdates.delete(hostname);
+                renderSystems(Array.from(systemsData));
                 alert(`Could not start the update on ${hostname}:\n\n${error.message}`);
-                button.disabled = false;
-                button.textContent = RUN_UPDATE_LABEL;
             });
     }
 
@@ -1842,8 +1862,7 @@ document.addEventListener("DOMContentLoaded", () => {
     //
     // No confirmation dialog and no opt-in behind it: this collects and
     // publishes what the host reports anyway, and changes nothing.
-    function handleCheckIn(event) {
-        const button = event.currentTarget;
+    function handleCheckIn(button) {
         const hostname = button.dataset.hostname;
         if (!hostname) {
             console.error("No hostname found for check-in button");
@@ -1915,8 +1934,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Handle system deletion
-    function handleDeleteSystem(event) {
-        const hostname = event.target.dataset.hostname;
+    function handleDeleteSystem(button) {
+        const hostname = button.dataset.hostname;
         if (!hostname) {
             console.error("No hostname found for delete button");
             return;
@@ -1924,18 +1943,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Show confirmation dialog
         const confirmed = confirm(
-            `Are you sure you want to delete "${hostname}"?\n\n` +
-            `This action cannot be undone. The system will be removed from the database.\n\n` +
-            `If the system is still running, it will reappear when it checks in again.`
+            `Remove ${hostname} from the dashboard?\n\n` +
+            `Its record is deleted. If the host is still running, it comes back the next time it checks in.`
         );
 
         if (!confirmed) {
             return;
         }
 
-        // Disable button during deletion
-        event.target.disabled = true;
-        event.target.textContent = "Deleting...";
+        button.disabled = true;
+        button.textContent = "Removing\u2026";
 
         // Send DELETE request
         fetch(`/api/systems/${encodeURIComponent(hostname)}`, {
@@ -1963,11 +1980,10 @@ document.addEventListener("DOMContentLoaded", () => {
             })
             .catch((error) => {
                 console.error(`Failed to delete system ${hostname}:`, error);
-                alert(`Failed to delete system: ${error.message}`);
+                alert(`Could not remove ${hostname}:\n\n${error.message}`);
                 
-                // Re-enable button
-                event.target.disabled = false;
-                event.target.textContent = "🗑️ Delete System";
+                button.disabled = false;
+                button.textContent = "Remove host";
             });
     }
 
@@ -2005,48 +2021,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // Render one host's expanded details from a system payload, whether it
     // came from the API or arrived over the WebSocket.
     function renderSystemDetails(hostname, detailsContent, data) {
-        let detailsHTML = '';
-        
-        // Prepare the actions footer (placed at the end): the record of
-        // the last update run, then the buttons that act on this host.
-        const isStale = isStaleCheckIn(data.last_seen);
-        const staleDays = getStaleDays(data.last_seen);
-        const runActive = isRunActive(data.last_update_run);
-        // Both sides must have opted in: the server offers the feature,
-        // and the host reports that it is listening for the command.
-        const canRunUpdates = features.remote_updates && data.remote_updates_enabled;
-        const runUpdateButtonHTML = canRunUpdates
-            ? `<button class="run-update-btn" data-hostname="${escapeHtml(hostname)}"${runActive ? ' disabled' : ''}>
-                    ${runActive ? '⏳ Update running' : RUN_UPDATE_LABEL}
-                </button>`
-            : '';
-        // Unlike the update button this one is drawn for every host: asking for
-        // a check-in needs no opt-in at either end.
-        const checkInPending = pendingCheckIns.has(hostname);
-        const checkInButtonHTML = `<button class="check-in-btn" data-hostname="${escapeHtml(hostname)}"${checkInPending ? ' disabled' : ''}>
-                    ${checkInPending ? CHECK_IN_WAITING_LABEL : CHECK_IN_LABEL}
-                </button>`;
-        const deleteButtonHTML = `
-            ${updateRunHTML(hostname, data.last_update_run)}
-            ${rebootHTML(data.last_reboot)}
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); text-align: right;">
-                ${isStale && staleDays >= 7 ? 
-                    '<span style="margin-right: 12px; color: var(--accent-orange); font-size: 13px; font-weight: 500;">⚠️ This system has not checked in for ' + staleDays + ' days</span>' : 
-                    ''}
-                ${checkInButtonHTML}
-                ${runUpdateButtonHTML}
-                ${rebootControlsHTML(hostname, data, runActive)}
-                <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">
-                    🗑️ Delete System
-                </button>
-            </div>
-        `;
-        
-        // System information block shown in the expanded per-host details.
-        // Uptime and reboot status live in the main table; the deeper
-        // hardware facts live here.
+        // The host's facts. Uptime, reboot status and last check-in live in
+        // the row; the deeper hardware facts live here.
         const infoRows = [
-            ['Client version', data.client_version ? escapeHtml(data.client_version) : ''],
+            ['Client', data.client_version ? escapeHtml(data.client_version) : ''],
             ['CPU', data.cpu_model ? escapeHtml(data.cpu_model) : ''],
             ['Cores', data.cpu_cores ? escapeHtml(String(data.cpu_cores)) : ''],
             ['RAM', escapeHtml(formatBytes(data.memory_total_bytes))],
@@ -2059,8 +2037,8 @@ document.addEventListener("DOMContentLoaded", () => {
             // when the data behind it has gone stale.
         ].filter(([, value]) => value !== '');
 
-        // Surface an incomplete check explicitly: the pending list below
-        // is a lower bound, not an answer, when a repository was skipped.
+        // Surface an incomplete check explicitly: the pending list is a lower
+        // bound, not an answer, when a repository was skipped.
         const warnings = data.update_check_warnings || [];
         const warningsHTML = warnings.length
             ? `<div class="update-check-warnings">
@@ -2068,117 +2046,89 @@ document.addEventListener("DOMContentLoaded", () => {
                 <ul>${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
             </div>`
             : '';
-        const systemInfoHTML = (infoRows.length
-            ? `<div class="system-info">
-                <h4>System information</h4>
-                <dl>
-                    ${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
-                </dl>
-            </div>`
-            : '') + groupEditorHTML(hostname);
 
-        if (data.pending_updates && data.pending_updates.length > 0) {
-            const updatesList = data.pending_updates
-                .map(
-                    (update) =>
-                        `<tr>
-                            <td>${escapeHtml(update.name)}</td>
-                            <td>${escapeHtml(update.version || "N/A")}</td>
-                            <td>${escapeHtml(update.source)}</td>
-                        </tr>`
-                )
-                .join("");
-            detailsHTML = `
-                <h3>Pending Updates for ${escapeHtml(data.hostname)}</h3>
-                ${systemInfoHTML}
-                ${warningsHTML}
-                <table class="updates-table">
-                    <thead>
-                        <tr>
-                            <th>Package</th>
-                            <th>Version</th>
-                            <th>Source</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${updatesList}
-                    </tbody>
-                </table>
-                ${deleteButtonHTML}
-            `;
+        const pending = data.pending_updates || [];
+        let packagesHTML;
+        if (pending.length > 0) {
+            packagesHTML = `
+                <h4>Pending updates <span class="details-count">${pending.length}</span></h4>
+                <div class="updates-scroll">
+                    <table class="updates-table">
+                        <tbody>
+                            ${pending.map((update) => `<tr>
+                                <td>${escapeHtml(update.name)}</td>
+                                <td>${escapeHtml(update.version || "")}</td>
+                                <td>${escapeHtml(update.source)}</td>
+                            </tr>`).join("")}
+                        </tbody>
+                    </table>
+                </div>`;
         } else if (data.update_status_unknown) {
-            detailsHTML = `
-                <h3>Update status unknown for ${escapeHtml(data.hostname)}</h3>
-                ${systemInfoHTML}
-                ${warningsHTML}
-                <p>${warnings.length
+            packagesHTML = `
+                <h4>Update status unknown</h4>
+                <p class="details-note">${warnings.length
                     ? 'The update check ran but could not see everything, so an empty result cannot be trusted as "up to date".'
-                    : 'No supported package manager was detected, or its update check failed to run. The update status cannot be determined.'}</p>
-                ${deleteButtonHTML}
-            `;
+                    : 'No supported package manager was detected, or its update check failed to run.'}</p>`;
         } else {
-            detailsHTML = `
-                <h3>No pending updates for ${escapeHtml(data.hostname)}</h3>
-                ${systemInfoHTML}
-                ${warningsHTML}
-                ${deleteButtonHTML}
-            `;
+            packagesHTML = `
+                <h4>Pending updates</h4>
+                <p class="details-note">Nothing to install.</p>`;
         }
-        
-        detailsContent.innerHTML = detailsHTML;
+
+        // Removing a host is rare and only undone by the host checking in
+        // again, so it sits at the foot of the facts rather than with the row
+        // actions. A long silence is the usual reason to reach for it, so that
+        // is said beside it.
+        const staleDays = getStaleDays(data.last_seen);
+        const silentNote = isStaleCheckIn(data.last_seen) && staleDays >= 7 && staleDays !== Infinity
+            ? `<span class="details-silent">Silent for ${staleDays} days.</span>`
+            : '';
+
+        detailsContent.innerHTML = `
+            <div class="details-grid">
+                <section class="details-packages">
+                    ${packagesHTML}
+                    ${warningsHTML}
+                </section>
+                <section class="details-host">
+                    <h4>Host</h4>
+                    ${infoRows.length
+                        ? `<dl class="system-info">${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>`
+                        : ''}
+                </section>
+                <section class="details-groups">
+                    <h4>Groups</h4>
+                    ${groupEditorHTML(hostname)}
+                    <div class="details-remove">
+                        ${silentNote}
+                        <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">Remove host</button>
+                    </div>
+                </section>
+            </div>
+            ${updateRunHTML(hostname, data.last_update_run)}
+            ${rebootHTML(data.last_reboot)}
+        `;
         detailsContent.dataset.loaded = "true";
         detailsContent.dataset.loadedTime = Date.now();
-        
-        // Attach delete button event listener
-        const deleteBtn = detailsContent.querySelector('.delete-system-btn');
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', handleDeleteSystem);
-        }
-
-        // Attach run-update button event listener
-        const runUpdateBtn = detailsContent.querySelector('.run-update-btn');
-        if (runUpdateBtn) {
-            runUpdateBtn.addEventListener('click', handleRunUpdate);
-        }
-
-        // Attach check-in button event listener
-        const checkInBtn = detailsContent.querySelector('.check-in-btn');
-        if (checkInBtn) {
-            checkInBtn.addEventListener('click', handleCheckIn);
-        }
-
-        // Attach the reboot checkbox and button
-        const rebootArm = detailsContent.querySelector('.reboot-arm-checkbox');
-        if (rebootArm) {
-            rebootArm.addEventListener('change', handleRebootArm);
-        }
-        const rebootBtn = detailsContent.querySelector('.reboot-btn');
-        if (rebootBtn) {
-            rebootBtn.addEventListener('click', handleReboot);
-        }
-
-        // Attach the group editor
-        detailsContent.querySelectorAll('.group-member-checkbox').forEach((box) => {
-            box.addEventListener('change', handleGroupMemberToggle);
-        });
-        const saveGroupsBtn = detailsContent.querySelector('.save-groups-btn');
-        if (saveGroupsBtn) {
-            saveGroupsBtn.addEventListener('click', handleSaveGroups);
-        }
 
         restoreOutputView(hostname, detailsContent, data.last_update_run);
         seedLiveOutput(hostname, data.last_update_run);
     }
 
-    // Function to load system details
+    // Render a host's expanded details. The list payload already carries
+    // nearly everything the panel shows, so it draws from that at once rather
+    // than blanking to "Loading…"; the full record (which adds the client
+    // version) is fetched behind it unless the WebSocket just delivered it.
     function loadSystemDetails(hostname, detailsContent) {
-        // The WebSocket payload that prompted this re-render carries the same
-        // fields the API would return, so render from it rather than blanking
-        // the panel to "Loading…" and asking for it again.
         const cached = detailPayloads.get(hostname);
         if (cached && Date.now() - cached.at < 5000) {
             renderSystemDetails(hostname, detailsContent, cached.data);
             return;
+        }
+
+        const summary = systemsData.find((s) => s && s.hostname === hostname);
+        if (summary) {
+            renderSystemDetails(hostname, detailsContent, { ...(cached ? cached.data : {}), ...summary });
         }
 
         fetch(`/api/systems/${encodeURIComponent(hostname)}`)
@@ -2189,46 +2139,77 @@ document.addEventListener("DOMContentLoaded", () => {
                 return response.json();
             })
             .then((data) => {
-                renderSystemDetails(hostname, detailsContent, data);
+                detailPayloads.set(hostname, { data, at: Date.now() });
+                // The table may have been rebuilt while this was in flight;
+                // draw into whichever panel is on screen now.
+                const current = document.querySelector(`.details-row${hostnameAttr(hostname)} .details-content`);
+                if (current) renderSystemDetails(hostname, current, data);
             })
             .catch((error) => {
                 console.error(`Failed to fetch system details for ${hostname}:`, error);
+                if (summary) return; // the summary is already on screen
                 detailsContent.innerHTML = `
-                    <div style="padding: 16px; background: rgba(248, 81, 73, 0.1); border: 1px solid var(--accent-red); border-radius: 6px; color: var(--accent-red);">
-                        <strong>Error loading details</strong>
-                        <div style="margin-top: 8px; font-size: 13px; opacity: 0.9;">${escapeHtml(error.message || 'Please try again')}</div>
+                    <div style="padding: 16px; border-left: 3px solid var(--tape-red); background: var(--bg-tertiary); color: var(--accent-red);">
+                        <strong>Could not load details for ${escapeHtml(hostname)}</strong>
+                        <div style="margin-top: 8px; font-size: 13px; opacity: 0.9;">${escapeHtml(error.message || 'Collapse and expand the row to try again')}</div>
                     </div>
                 `;
             });
     }
 
-    // Handle row toggle for details
-    systemsTable.addEventListener("click", (event) => {
-        const chevron = event.target.closest(".chevron");
-        if (!chevron) return;
+    function setChevron(chevron, open) {
+        chevron.textContent = open ? "▼" : "▶";
+        chevron.setAttribute("aria-expanded", open ? "true" : "false");
+    }
 
-        const row = chevron.closest("tr");
-        const hostname = row.dataset.hostname;
+    function toggleDetails(hostname) {
         const detailsRow = document.querySelector(`.details-row${hostnameAttr(hostname)}`);
+        const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
+        if (!detailsRow || !chevron) return;
         const detailsContent = detailsRow.querySelector(".details-content");
 
-        // Toggle visibility
         if (detailsRow.style.display === "none") {
             detailsRow.style.display = "table-row";
-            chevron.textContent = "▼";
-            expandedSystems.add(hostname); // Track as manually expanded
-
-            // Fetch details only if not already loaded or if data is stale
+            setChevron(chevron, true);
+            expandedSystems.add(hostname);
             if (!detailsContent.dataset.loaded || Date.now() - detailsContent.dataset.loadedTime > 60000) {
                 loadSystemDetails(hostname, detailsContent);
             }
         } else {
             detailsRow.style.display = "none";
-            chevron.textContent = "▶";
-            expandedSystems.delete(hostname); // Remove from expanded set
-            disarmReboot(hostname); // A closed row is not a confirmed one
-            discardGroupEdit(hostname); // nor does it hold an unsaved edit
+            setChevron(chevron, false);
+            expandedSystems.delete(hostname);
         }
+    }
+
+    // One listener for everything in the table, attached once. The rows are
+    // rebuilt on every check-in from any host, so per-button listeners would
+    // have to be re-attached on every render; delegation does not care.
+    systemsTable.addEventListener("click", (event) => {
+        const button = event.target.closest("button");
+        if (button && !button.disabled) {
+            if (button.classList.contains("check-in-btn")) return handleCheckIn(button);
+            if (button.classList.contains("run-update-btn")) return handleRunUpdate(button);
+            if (button.classList.contains("reboot-btn")) return handleReboot(button);
+            if (button.classList.contains("delete-system-btn")) return handleDeleteSystem(button);
+        }
+
+        // Anywhere else on a host's row opens or closes its details — the
+        // chevron is only the visible hint. Controls and the details panel
+        // itself are left alone, and so is a click that ends a text selection:
+        // copying an address out of the row should not fold it.
+        const row = event.target.closest("tr[data-hostname]:not(.details-row)");
+        if (!row) return;
+        if (!event.target.closest(".chevron") &&
+            event.target.closest("button, input, label, a, .row-actions")) return;
+        if (String(window.getSelection && window.getSelection()).length > 0) return;
+        toggleDetails(row.dataset.hostname);
+    });
+
+    systemsTable.addEventListener("change", (event) => {
+        const target = event.target;
+        if (target.classList.contains("reboot-arm-checkbox")) handleRebootArm(target);
+        else if (target.classList.contains("group-member-checkbox")) handleGroupMemberToggle(target);
     });
 
     // Add event listeners to table headers for sorting
@@ -2248,49 +2229,6 @@ document.addEventListener("DOMContentLoaded", () => {
             renderSystems(systemsData);
         });
     });
-
-    // Expand all systems
-    function expandAll() {
-        document.querySelectorAll('.details-row').forEach(detailsRow => {
-            const hostname = detailsRow.dataset.hostname;
-            const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
-            if (chevron && detailsRow.style.display === "none") {
-                detailsRow.style.display = "table-row";
-                chevron.textContent = "▼";
-                expandedSystems.add(hostname);
-                const detailsContent = detailsRow.querySelector(".details-content");
-                if (!detailsContent.dataset.loaded || Date.now() - detailsContent.dataset.loadedTime > 60000) {
-                    loadSystemDetails(hostname, detailsContent);
-                }
-            }
-        });
-    }
-
-    // Collapse all systems
-    function collapseAll() {
-        document.querySelectorAll('.details-row').forEach(detailsRow => {
-            const hostname = detailsRow.dataset.hostname;
-            const chevron = document.querySelector(`tr${hostnameAttr(hostname)} .chevron`);
-            if (chevron && detailsRow.style.display !== "none") {
-                detailsRow.style.display = "none";
-                chevron.textContent = "▶";
-                expandedSystems.delete(hostname);
-                disarmReboot(hostname);
-            }
-        });
-    }
-
-    // Add event listeners for expand/collapse all buttons
-    const expandAllBtn = document.getElementById("expand-all-btn");
-    const collapseAllBtn = document.getElementById("collapse-all-btn");
-    
-    if (expandAllBtn) {
-        expandAllBtn.addEventListener("click", expandAll);
-    }
-    
-    if (collapseAllBtn) {
-        collapseAllBtn.addEventListener("click", collapseAll);
-    }
 
     // Initial fetch and WebSocket connection. Features first, so the first
     // render of an expanded row already knows whether to offer the update
