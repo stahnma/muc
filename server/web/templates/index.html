@@ -15,53 +15,19 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/styles.css?v=15">
+    <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=17">
     <script src="/static/theme.js" defer></script>
-    <script src="/static/app.js?v=15" defer></script>
-     <script defer>
-        document.addEventListener('DOMContentLoaded', () => {
-            const table = document.querySelector('table');
-            const headers = table.querySelectorAll('th');
-
-            headers.forEach((header, index) => {
-                if (index === 0) return; // Skip the first column (chevron toggle)
-
-                let ascending = true;
-
-                header.addEventListener('click', () => {
-                    const rows = Array.from(table.querySelectorAll('tbody tr'));
-
-                    rows.sort((rowA, rowB) => {
-                        const cellA = rowA.children[index].textContent.trim();
-                        const cellB = rowB.children[index].textContent.trim();
-
-                        if (!isNaN(cellA) && !isNaN(cellB)) {
-                            return ascending ? cellA - cellB : cellB - cellA;
-                        }
-
-                        return ascending
-                            ? cellA.localeCompare(cellB)
-                            : cellB.localeCompare(cellA);
-                    });
-
-                    ascending = !ascending;
-
-                    rows.forEach(row => table.querySelector('tbody').appendChild(row));
-
-                    headers.forEach(h => h.classList.remove('ascending', 'descending'));
-                    header.classList.add(ascending ? 'ascending' : 'descending');
-                });
-            });
-        });
-    </script>
+    <script src="/static/app.js?v=17" defer></script>
 </head>
 <body>
-    <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
-    <h1>System Updates</h1>
-    <div class="controls">
-        <button id="expand-all-btn">Expand All</button>
-        <button id="collapse-all-btn">Collapse All</button>
-    </div>
+    <header class="masthead">
+        <h1>System updates</h1>
+        <div class="masthead-tools">
+            <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+        </div>
+    </header>
     <!-- Groups. The bar filters the table below; picking one group reveals the
          actions that apply to all of it, and the report of what they did. -->
     <div id="group-bar" class="group-bar"></div>
@@ -70,14 +36,15 @@
     <table>
         <thead>
             <tr>
-                <th></th> <!-- For the chevron toggle -->
+                <th class="chevron-col"><span class="visually-hidden">Details</span></th>
                 <th class="sortable" data-column="hostname">Hostname</th>
                 <th class="sortable" data-column="os">OS</th>
-                <th class="sortable" data-column="architecture">Architecture</th>
-                <th class="sortable" data-column="ip">IP Address</th>
-                <th class="sortable" data-column="updates_available">Updates Available</th>
+                <th class="sortable" data-column="architecture">Arch</th>
+                <th class="sortable" data-column="ip">IP</th>
+                <th class="sortable" data-column="updates_available">Updates</th>
                 <th class="sortable" data-column="uptime_seconds">Uptime</th>
                 <th class="sortable" data-column="last_seen">Last Seen</th>
+                <th class="actions-col"><span class="visually-hidden">Actions</span></th>
             </tr>
         </thead>
         <tbody id="systems">

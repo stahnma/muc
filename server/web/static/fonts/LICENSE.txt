@@ -1,0 +1,8 @@
+Archivo — Copyright 2017 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)
+Martian Mono — Copyright 2021 The Martian Mono Project Authors (https://github.com/evilmartians/mono)
+
+Both fonts are licensed under the SIL Open Font License, Version 1.1:
+https://openfontlicense.org/open-font-license-official-text/
+
+The .woff2 files here are the Latin subsets of the variable (wdth + wght)
+builds, as distributed by Fontsource.
