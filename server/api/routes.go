@@ -222,7 +222,7 @@ func RunUpdateHandler(store storage.Storage, updater UpdateRequester) http.Handl
 			return
 		}
 
-		res := dispatch(store, actionUpdate, requesters{update: updater}, hostname, requesterAddress(r))
+		res := dispatch(store, actionUpdate, requesters{update: updater}, hostname, requesterAddress(r), "")
 		if res.Outcome != OutcomeAccepted {
 			writeAPIError(w, statusFor(res), res.Reason)
 			return
@@ -264,7 +264,7 @@ func RebootHandler(store storage.Storage, rebooter RebootRequester) http.Handler
 			return
 		}
 
-		res := dispatch(store, actionReboot, requesters{reboot: rebooter}, hostname, requesterAddress(r))
+		res := dispatch(store, actionReboot, requesters{reboot: rebooter}, hostname, requesterAddress(r), "")
 		if res.Outcome != OutcomeAccepted {
 			writeAPIError(w, statusFor(res), res.Reason)
 			return
@@ -306,7 +306,7 @@ func CheckInHandler(store storage.Storage, requester CheckInRequester) http.Hand
 			return
 		}
 
-		res := dispatch(store, actionCheckIn, requesters{checkIn: requester}, hostname, requesterAddress(r))
+		res := dispatch(store, actionCheckIn, requesters{checkIn: requester}, hostname, requesterAddress(r), "")
 		if res.Outcome != OutcomeAccepted {
 			writeAPIError(w, statusFor(res), res.Reason)
 			return

@@ -2,6 +2,7 @@ package nats
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"server/metrics"
 	"server/models"
@@ -177,6 +178,20 @@ func checkInHandler(store storage.Storage) nats.MsgHandler {
 			}
 		}
 
+		// A reboot is the one operation whose end the host cannot report, so
+		// the check-in that shows it happened is what goes in the log.
+		if !isFirstTime && previous.LastReboot != system.LastReboot && system.LastReboot != nil &&
+			system.LastReboot.Status == models.RebootStatusRebooted {
+			logOperation(store, models.Operation{
+				Hostname:    system.Hostname,
+				Action:      "reboot",
+				Event:       models.OperationRebooted,
+				ID:          system.LastReboot.ID,
+				RequestedBy: system.LastReboot.RequestedBy,
+				Detail:      "back up and checking in",
+			})
+		}
+
 		// Record processing duration
 		duration := time.Since(start).Seconds()
 		metrics.NATSMessagesReceivedDuration.WithLabelValues(m.Subject).Observe(duration)
@@ -217,6 +232,41 @@ func updateResultHandler(store storage.Storage) nats.MsgHandler {
 
 		slog.Info("Recorded update run",
 			"hostname", hostname, "id", run.ID, "status", run.Status, "exit_code", run.ExitCode)
+
+		logOperation(store, models.Operation{
+			Hostname:    hostname,
+			Action:      "update",
+			Event:       run.Status,
+			ID:          run.ID,
+			RequestedBy: run.RequestedBy,
+			Command:     run.Command,
+			Detail:      updateRunDetail(run),
+		})
+	}
+}
+
+// updateRunDetail says how a run ended, in the words the log shows. A run
+// still going has nothing to say yet.
+func updateRunDetail(run models.UpdateRun) string {
+	switch {
+	case run.Status == models.OperationRunning:
+		return ""
+	case run.Error != "":
+		return run.Error
+	case run.Status == models.OperationFailed:
+		return fmt.Sprintf("exited with status %d", run.ExitCode)
+	default:
+		return ""
+	}
+}
+
+// logOperation appends to the operations log. A line that cannot be written
+// is reported and otherwise ignored: the record it describes has already been
+// saved, and that is the one the dashboard depends on.
+func logOperation(store storage.Storage, op models.Operation) {
+	if err := store.AppendOperation(op); err != nil {
+		slog.Error("Failed to log operation",
+			"hostname", op.Hostname, "action", op.Action, "event", op.Event, "error", err)
 	}
 }
 

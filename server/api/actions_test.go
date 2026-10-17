@@ -56,15 +56,15 @@ func TestDispatchStatusMatchesSingleHostRoutes(t *testing.T) {
 				switch act {
 				case actionUpdate:
 					f := &fakeUpdater{ack: models.UpdateAck{Accepted: accepted, ID: "abc"}, err: tc.err}
-					got = statusFor(dispatch(store, act, requesters{update: f}, "smallboi", "tester"))
+					got = statusFor(dispatch(store, act, requesters{update: f}, "smallboi", "tester", ""))
 					viaRoute = postUpdate(RunUpdateHandler(store, f), "smallboi").Code
 				case actionCheckIn:
 					f := &fakeCheckIner{ack: models.CheckInAck{Accepted: accepted, ID: "abc"}, err: tc.err}
-					got = statusFor(dispatch(store, act, requesters{checkIn: f}, "smallboi", "tester"))
+					got = statusFor(dispatch(store, act, requesters{checkIn: f}, "smallboi", "tester", ""))
 					viaRoute = postCheckIn(CheckInHandler(store, f), "smallboi").Code
 				case actionReboot:
 					f := &fakeRebooter{ack: models.RebootAck{Accepted: accepted, ID: "abc"}, err: tc.err}
-					got = statusFor(dispatch(store, act, requesters{reboot: f}, "smallboi", "tester"))
+					got = statusFor(dispatch(store, act, requesters{reboot: f}, "smallboi", "tester", ""))
 					viaRoute = postReboot(RebootHandler(store, f), "smallboi").Code
 				}
 
@@ -109,7 +109,7 @@ func TestDispatchSkipsWhatTheRouteRefuses(t *testing.T) {
 			updater := &fakeUpdater{ack: models.UpdateAck{Accepted: true}}
 			rebooter := &fakeRebooter{ack: models.RebootAck{Accepted: true}}
 
-			res := dispatch(store, tc.act, requesters{update: updater, reboot: rebooter}, "smallboi", "tester")
+			res := dispatch(store, tc.act, requesters{update: updater, reboot: rebooter}, "smallboi", "tester", "")
 
 			if res.Outcome != OutcomeSkipped {
 				t.Errorf("Outcome = %q, want %q", res.Outcome, OutcomeSkipped)
@@ -136,7 +136,7 @@ func TestDispatchUnknownHostIsSkipped(t *testing.T) {
 	store := &fakeStorage{}
 	updater := &fakeUpdater{ack: models.UpdateAck{Accepted: true}}
 
-	res := dispatch(store, actionUpdate, requesters{update: updater}, "ghost", "tester")
+	res := dispatch(store, actionUpdate, requesters{update: updater}, "ghost", "tester", "")
 
 	if res.Outcome != OutcomeSkipped || res.Code != CodeUnknownHost {
 		t.Errorf("got %q/%q, want %q/%q", res.Outcome, res.Code, OutcomeSkipped, CodeUnknownHost)
@@ -169,7 +169,7 @@ func TestDispatchRefusalReasonFallsBackPerAction(t *testing.T) {
 				reboot:  &fakeRebooter{ack: models.RebootAck{Accepted: false}},
 				checkIn: &fakeCheckIner{ack: models.CheckInAck{Accepted: false}},
 			}
-			res := dispatch(store, tc.act, req, "smallboi", "tester")
+			res := dispatch(store, tc.act, req, "smallboi", "tester", "")
 			if res.Reason != tc.want {
 				t.Errorf("Reason = %q, want %q", res.Reason, tc.want)
 			}
@@ -184,7 +184,7 @@ func TestDispatchKeepsTheHostsOwnReason(t *testing.T) {
 	store := &fakeStorage{systems: []models.System{optedInSystem("smallboi")}}
 	updater := &fakeUpdater{ack: models.UpdateAck{Accepted: false, Reason: "an update is already running on this host"}}
 
-	res := dispatch(store, actionUpdate, requesters{update: updater}, "smallboi", "tester")
+	res := dispatch(store, actionUpdate, requesters{update: updater}, "smallboi", "tester", "")
 
 	if res.Reason != "an update is already running on this host" {
 		t.Errorf("Reason = %q, want the host's own reason", res.Reason)
@@ -208,7 +208,7 @@ func TestDispatchGroupPreservesMemberOrder(t *testing.T) {
 		hook: func(hostname string) { time.Sleep(delays[hostname]) },
 	}
 
-	results := dispatchGroup(store, actionUpdate, requesters{update: updater}, members, "tester")
+	results := dispatchGroup(store, actionUpdate, requesters{update: updater}, "", members, "tester")
 
 	if len(results) != len(members) {
 		t.Fatalf("got %d results, want %d", len(results), len(members))
@@ -252,7 +252,7 @@ func TestDispatchGroupRunsConcurrently(t *testing.T) {
 
 	done := make(chan []HostActionResult, 1)
 	go func() {
-		done <- dispatchGroup(store, actionUpdate, requesters{update: updater}, members, "tester")
+		done <- dispatchGroup(store, actionUpdate, requesters{update: updater}, "", members, "tester")
 	}()
 
 	select {
@@ -288,7 +288,7 @@ func TestDispatchGroupMixedOutcomes(t *testing.T) {
 	}
 
 	members := []string{"web01", "db01", "web02", "ghost01"}
-	results := dispatchGroup(store, actionUpdate, requesters{update: updater}, members, "tester")
+	results := dispatchGroup(store, actionUpdate, requesters{update: updater}, "", members, "tester")
 
 	want := []struct {
 		outcome string
@@ -322,12 +322,41 @@ func TestDispatchGroupOnNoMembers(t *testing.T) {
 	store := &fakeStorage{}
 	updater := &fakeUpdater{}
 
-	results := dispatchGroup(store, actionUpdate, requesters{update: updater}, nil, "tester")
+	results := dispatchGroup(store, actionUpdate, requesters{update: updater}, "", nil, "tester")
 
 	if results == nil {
 		t.Fatal("results is nil, want an empty slice")
 	}
 	if len(results) != 0 {
 		t.Errorf("got %d results, want 0", len(results))
+	}
+}
+
+// TestDispatchLogsEveryAttempt: the log has a line for a request whatever
+// became of it, and a group request says which group it came through.
+func TestDispatchLogsEveryAttempt(t *testing.T) {
+	store := &fakeStorage{systems: []models.System{optedInSystem("smallboi"), {Hostname: "shy"}}}
+	updater := &fakeUpdater{ack: models.UpdateAck{Accepted: true, ID: "run1", Command: "dnf upgrade -y"}}
+
+	dispatchGroup(store, actionUpdate, requesters{update: updater}, "lab", []string{"smallboi", "shy", "ghost"}, "10.0.0.5")
+
+	if len(store.ops) != 3 {
+		t.Fatalf("logged %d operations, want 3: %+v", len(store.ops), store.ops)
+	}
+	byHost := map[string]models.Operation{}
+	for _, op := range store.ops {
+		byHost[op.Hostname] = op
+		if op.Action != "update" || op.Event != models.OperationRequested || op.Group != "lab" || op.RequestedBy != "10.0.0.5" {
+			t.Errorf("logged %+v, want an update request from 10.0.0.5 through group lab", op)
+		}
+	}
+	if op := byHost["smallboi"]; op.Outcome != OutcomeAccepted || op.ID != "run1" || op.Command != "dnf upgrade -y" {
+		t.Errorf("smallboi logged %+v, want accepted with the run's id and command", op)
+	}
+	if op := byHost["shy"]; op.Outcome != OutcomeSkipped || op.Detail == "" {
+		t.Errorf("shy logged %+v, want skipped with the reason", op)
+	}
+	if op := byHost["ghost"]; op.Outcome != OutcomeSkipped {
+		t.Errorf("ghost logged %+v, want skipped", op)
 	}
 }

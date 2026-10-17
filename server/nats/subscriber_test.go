@@ -15,6 +15,7 @@ import (
 type memStore struct {
 	systems map[string]models.System
 	saves   int
+	ops     []models.Operation
 }
 
 func newMemStore(systems ...models.System) *memStore {
@@ -64,6 +65,14 @@ func (s *memStore) SaveGroup(group models.Group) error                   { retur
 func (s *memStore) DeleteGroup(name string) error                        { return nil }
 func (s *memStore) RenameGroup(oldName, newName string) error            { return nil }
 func (s *memStore) SetHostGroups(hostname string, groups []string) error { return nil }
+
+func (s *memStore) AppendOperation(op models.Operation) error {
+	s.ops = append(s.ops, op)
+	return nil
+}
+func (s *memStore) GetOperations(hostname string, before uint64, limit int) ([]models.Operation, error) {
+	return s.ops, nil
+}
 
 type errMissing struct{}
 
@@ -284,5 +293,51 @@ func TestCheckInCarriesTheRebootOptIn(t *testing.T) {
 
 	if store.systems["smallboi"].RemoteRebootEnabled {
 		t.Error("RemoteRebootEnabled stayed true after the client stopped reporting it")
+	}
+}
+
+// TestResultsAreLogged: a run's start and end, and a reboot going down, each
+// leave a line in the operations log.
+func TestResultsAreLogged(t *testing.T) {
+	store := newMemStore(models.System{Hostname: "smallboi"})
+
+	updateResultHandler(store)(msg(t, "systems.results.update.smallboi", models.UpdateRun{ID: "u1", Status: "running"}))
+	updateResultHandler(store)(msg(t, "systems.results.update.smallboi", models.UpdateRun{ID: "u1", Status: "failed", ExitCode: 3}))
+	rebootResultHandler(store)(msg(t, "systems.results.reboot.smallboi", models.Reboot{ID: "r1", Status: models.RebootStatusRebooting}))
+
+	want := []struct{ action, event, id, detail string }{
+		{"update", models.OperationRunning, "u1", ""},
+		{"update", models.OperationFailed, "u1", "exited with status 3"},
+		{"reboot", models.OperationRebooting, "r1", ""},
+	}
+	if len(store.ops) != len(want) {
+		t.Fatalf("logged %d operations, want %d: %+v", len(store.ops), len(want), store.ops)
+	}
+	for i, w := range want {
+		op := store.ops[i]
+		if op.Hostname != "smallboi" || op.Action != w.action || op.Event != w.event || op.ID != w.id || op.Detail != w.detail {
+			t.Errorf("ops[%d] = %+v, want %+v", i, op, w)
+		}
+	}
+}
+
+// TestRebootCompletionIsLoggedOnce: the check-in that shows the host came
+// back is logged as rebooted, and the ones after it are not.
+func TestRebootCompletionIsLoggedOnce(t *testing.T) {
+	requested := time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
+	store := newMemStore(models.System{
+		Hostname:   "smallboi",
+		LastReboot: &models.Reboot{ID: "r1", Status: models.RebootStatusRebooting, RequestedAt: requested},
+	})
+
+	for range 2 {
+		checkInHandler(store)(msg(t, "systems.updates.smallboi", models.System{Hostname: "smallboi", UptimeSeconds: 60}))
+	}
+
+	if len(store.ops) != 1 {
+		t.Fatalf("logged %d operations, want 1: %+v", len(store.ops), store.ops)
+	}
+	if op := store.ops[0]; op.Action != "reboot" || op.Event != models.OperationRebooted || op.ID != "r1" {
+		t.Errorf("logged %+v, want reboot r1 rebooted", op)
 	}
 }

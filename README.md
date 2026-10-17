@@ -342,6 +342,7 @@ The web dashboard provides:
 - A check-in button on every host, to refresh a row now rather than at its next poll (see [Asking a host to check in](#asking-a-host-to-check-in))
 - An update button for hosts that have opted in (see [Running updates from the dashboard](#running-updates-from-the-dashboard))
 - Group chips that filter the table, and run check-in, updates or a reboot across a whole group at once — groups you make yourself, plus derived ones like `os:fedora`, `pkg:rpm` and `state:needs-reboot` that the server works out for itself (see [Grouping hosts](#grouping-hosts))
+- An operations log of every update, reboot and check-in asked for, and how each one went (see [Operations log](#operations-log))
 
 ### Tailnet status
 
@@ -877,6 +878,38 @@ came from and the counts, so "who rebooted production" is one `grep` away:
 ```bash
 journalctl -u muc-server | grep "Group action"
 ```
+
+## Operations log
+
+Every update, reboot and check-in asked of a host — from its row, from a
+group, or straight from the API — is written to an operations log in the
+server's database, along with what the host reported afterwards. A request
+the server never sent (the host had not opted in, or a reboot was not
+pending) is logged too, with the reason, so "I pressed the button and
+nothing happened" has an answer.
+
+| What happened | Logged when |
+|---|---|
+| `requested` | The server asked, or decided not to. `outcome` says which: `accepted`, `skipped`, `refused`, `unreachable` or `failed`. |
+| `running`, `succeeded`, `failed` | An update run reported its start and its end. |
+| `rebooting`, `failed` | A host reported going down for a reboot, or that its reboot command failed. |
+| `rebooted` | The host's next check-in showed it had booted since the request. |
+
+A request and the results that follow it share an `id`, and a request made
+through a group names the group.
+
+Open **Operations log** in the dashboard's footer to see the whole fleet, or
+**Operations log for this host** in a host's expanded details to see one
+machine. From the API:
+
+```sh
+curl http://muc-server:8080/api/operations                 # newest 100, every host
+curl http://muc-server:8080/api/systems/web01/operations   # one host
+curl 'http://muc-server:8080/api/operations?limit=50&before=1200'   # page back
+```
+
+The log keeps the newest 10,000 entries. A host's entries stay after the
+host is removed, so its history is still there to read.
 
 ## Alternatives
 

@@ -430,7 +430,7 @@ func groupActionHandler(store storage.Storage, act action, gate func() (requeste
 			return
 		}
 
-		results := dispatchGroup(store, act, req, group.Members, requesterAddress(r))
+		results := dispatchGroup(store, act, req, group.Name, group.Members, requesterAddress(r))
 
 		resp := GroupActionResponse{
 			Group:     group.Name,

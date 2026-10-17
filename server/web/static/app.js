@@ -2095,6 +2095,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     ${infoRows.length
                         ? `<dl class="system-info">${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>`
                         : ''}
+                    <a class="details-oplog-link" href="/operations?host=${escapeHtml(encodeURIComponent(hostname))}">Operations log for this host</a>
                 </section>
                 <section class="details-groups">
                     <h4>Groups</h4>

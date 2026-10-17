@@ -18,4 +18,9 @@ type Storage interface {
 	DeleteGroup(name string) error
 	RenameGroup(oldName, newName string) error
 	SetHostGroups(hostname string, groups []string) error
+
+	// The operations log records what hosts were asked to do and what they
+	// said back. Unlike the rest of storage it is only ever appended to.
+	AppendOperation(op models.Operation) error
+	GetOperations(hostname string, before uint64, limit int) ([]models.Operation, error)
 }
