@@ -925,6 +925,15 @@ button.chevron[aria-expanded="true"] {
     right: 0;
 }
 
+/* A relative time ("about a day ago") in running text, which has the exact
+   time on hover. The dotted rule is the only hint that there is one: the
+   phrase reads like any other words around it. */
+.relative-time {
+    text-decoration: underline dotted;
+    text-decoration-color: var(--text-secondary);
+    text-underline-offset: 2px;
+}
+
 /* Compact key/value list: label column sized to its content, values
    left-aligned beside it. */
 dl.system-info {
