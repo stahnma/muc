@@ -965,6 +965,32 @@ document.addEventListener("DOMContentLoaded", () => {
         return `about ${diffYears} year${diffYears === 1 ? '' : 's'} ago`;
     }
 
+    // A relative time for the page, with the exact time it stands for on
+    // hover. "About a day ago" is quick to read and useless to correlate with
+    // a log, so every one of them carries the real timestamp.
+    function relativeTimeHTML(isoTimestamp, align) {
+        const relative = escapeHtml(formatRelativeTime(isoTimestamp));
+        if (!isoTimestamp) return relative;
+        return `<span class="relative-time" data-tooltip="${escapeHtml(formatFullTimestamp(isoTimestamp))}"` +
+            `${align ? ` data-tooltip-align="${align}"` : ''}>${relative}</span>`;
+    }
+
+    // The same, for text that is itself a tooltip and so cannot have one of
+    // its own: the exact time rides along in parentheses.
+    function relativeTimeText(isoTimestamp) {
+        const relative = formatRelativeTime(isoTimestamp);
+        return isoTimestamp ? `${relative} (${formatFullTimestamp(isoTimestamp)})` : relative;
+    }
+
+    // When the host booted, from its uptime as of its last check-in. Uptime
+    // is a duration rather than a phrase, but it answers the same question
+    // ("since when?") and gets the same answer on hover.
+    function bootTimestamp(system) {
+        const seen = Date.parse((system && system.last_seen) || '');
+        if (!system || !system.uptime_seconds || isNaN(seen)) return '';
+        return new Date(seen - system.uptime_seconds * 1000).toISOString();
+    }
+
     // Format a byte count as a human-readable RAM amount (e.g. "32 GB").
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return '';
@@ -1177,7 +1203,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (ts.magic_dns_suffix && ts.magic_dns_suffix !== name) html += detail(ts.magic_dns_suffix);
             const reason = tailnetStateReason(ts.state);
             if (reason) html += escapeHtml(` · ${reason}`);
-            if (ts.last_connected_at) html += escapeHtml(` · last connected ${formatRelativeTime(ts.last_connected_at)}`);
+            if (ts.last_connected_at) html += ` · last connected ${relativeTimeHTML(ts.last_connected_at)}`;
         }
         return html;
     }
@@ -1350,7 +1376,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         const badgeNote = warning
                             ? dataWarningIndicator(warning)
                             : staleData
-                            ? dataWarningIndicator(`Host is checking in, but its update data was collected ${formatRelativeTime(system.updates_checked_at)}`)
+                            ? dataWarningIndicator(`Host is checking in, but its update data was collected ${relativeTimeText(system.updates_checked_at)}`)
                             : '';
                         return `
                     <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
@@ -1373,7 +1399,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             </span>${badgeNote}` :
                             `<span class="update-badge up-to-date">Up to date</span>${badgeNote}`
                         }${runningIndicator(system)}</td>
-                        <td>${escapeHtml(formatUptime(system.uptime_seconds))}</td>
+                        <td${bootTimestamp(system) ? ` data-tooltip-align="right" data-tooltip="Up since ${escapeHtml(formatFullTimestamp(bootTimestamp(system)))}"` : ''}>${escapeHtml(formatUptime(system.uptime_seconds))}</td>
                         <td class="last-seen-cell" data-timestamp="${escapeHtml(system.last_seen || '')}" data-tooltip-align="right" data-tooltip="${escapeHtml(formatFullTimestamp(system.last_seen || ''))}">
                             ${isStale ? tooltipIcon('⚠️ ', 'stale-indicator', STALE_CHECKIN_TOOLTIP, 'right') : ''}
                             ${formatRelativeTime(system.last_seen || '')}
@@ -1460,11 +1486,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const reboot = system && system.last_reboot;
         if (isRebootOverdue(reboot)) {
             return ' ' + tooltipIcon('\u23fb', 'rebooting-indicator overdue',
-                `Reboot requested ${formatRelativeTime(reboot.requested_at || '')}; the host has not checked in since`);
+                `Reboot requested ${relativeTimeText(reboot.requested_at || '')}; the host has not checked in since`);
         }
         if (isRebooting(reboot)) {
             return ' ' + tooltipIcon('\u23fb', 'rebooting-indicator',
-                `Rebooting \u2014 requested ${formatRelativeTime(reboot.requested_at || '')}`);
+                `Rebooting \u2014 requested ${relativeTimeText(reboot.requested_at || '')}`);
         }
         if (system && system.reboot_required) {
             return ' ' + tooltipIcon('\u27f3', 'reboot-indicator', 'Reboot required');
@@ -1580,13 +1606,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const abandoned = !active && run.status === "running";
         let heading;
         if (active) {
-            heading = `\u23f3 Update running &mdash; started ${escapeHtml(formatRelativeTime(run.started_at || ''))}`;
+            heading = `\u23f3 Update running &mdash; started ${relativeTimeHTML(run.started_at || '')}`;
         } else if (abandoned) {
-            heading = `\u2753 Update result unknown &mdash; started ${escapeHtml(formatRelativeTime(run.started_at || ''))}`;
+            heading = `\u2753 Update result unknown &mdash; started ${relativeTimeHTML(run.started_at || '')}`;
         } else if (run.status === "succeeded") {
-            heading = `\u2705 Update succeeded ${escapeHtml(formatRelativeTime(run.finished_at || run.started_at || ''))}`;
+            heading = `\u2705 Update succeeded ${relativeTimeHTML(run.finished_at || run.started_at || '')}`;
         } else {
-            heading = `\u274c Update failed ${escapeHtml(formatRelativeTime(run.finished_at || run.started_at || ''))}`;
+            heading = `\u274c Update failed ${relativeTimeHTML(run.finished_at || run.started_at || '')}`;
         }
 
         const notes = [];
@@ -1634,16 +1660,16 @@ document.addEventListener("DOMContentLoaded", () => {
         let heading;
         let tone;
         if (active) {
-            heading = `\u23fb Rebooting &mdash; requested ${escapeHtml(formatRelativeTime(reboot.requested_at || ''))}`;
+            heading = `\u23fb Rebooting &mdash; requested ${relativeTimeHTML(reboot.requested_at || '')}`;
             tone = 'running';
         } else if (overdue) {
-            heading = `\u2753 Reboot requested ${escapeHtml(formatRelativeTime(reboot.requested_at || ''))} &mdash; the host has not checked in since`;
+            heading = `\u2753 Reboot requested ${relativeTimeHTML(reboot.requested_at || '')} &mdash; the host has not checked in since`;
             tone = 'unknown';
         } else if (reboot.status === "rebooted") {
-            heading = `\u2705 Rebooted &mdash; back ${escapeHtml(formatRelativeTime(reboot.finished_at || reboot.requested_at || ''))}`;
+            heading = `\u2705 Rebooted &mdash; back ${relativeTimeHTML(reboot.finished_at || reboot.requested_at || '')}`;
             tone = 'succeeded';
         } else {
-            heading = `\u274c Reboot failed ${escapeHtml(formatRelativeTime(reboot.finished_at || reboot.requested_at || ''))}`;
+            heading = `\u274c Reboot failed ${relativeTimeHTML(reboot.finished_at || reboot.requested_at || '')}`;
             tone = 'failed';
         }
 
@@ -2081,7 +2107,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // is said beside it.
         const staleDays = getStaleDays(data.last_seen);
         const silentNote = isStaleCheckIn(data.last_seen) && staleDays >= 7 && staleDays !== Infinity
-            ? `<span class="details-silent">Silent for ${staleDays} days.</span>`
+            ? `<span class="details-silent" data-tooltip="Last seen ${escapeHtml(formatFullTimestamp(data.last_seen))}">Silent for ${staleDays} days.</span>`
             : '';
 
         detailsContent.innerHTML = `
