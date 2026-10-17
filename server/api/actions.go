@@ -99,7 +99,39 @@ func statusFor(res HostActionResult) int {
 // check whichever opt-ins the action needs, send the command, read the answer.
 // It never writes to the response — the single-host routes turn its result into
 // a status code, the group routes turn it into one line of a result list.
-func dispatch(store storage.Storage, act action, req requesters, hostname, requestedBy string) HostActionResult {
+//
+// Every attempt goes into the operations log, including the ones that never
+// reached the host: "I pressed update and nothing happened" is answered by the
+// skipped line as much as "who updated this" is by the accepted one. group is
+// the group the request came through, or empty.
+func dispatch(store storage.Storage, act action, req requesters, hostname, requestedBy, group string) HostActionResult {
+	res := attempt(store, act, req, hostname, requestedBy)
+	recordRequest(store, act, res, requestedBy, group)
+	return res
+}
+
+// recordRequest writes the log line for one dispatch. A log that cannot be
+// written is reported and otherwise ignored: the host has already been asked,
+// and failing the request now would only hide that it was.
+func recordRequest(store storage.Storage, act action, res HostActionResult, requestedBy, group string) {
+	op := models.Operation{
+		Hostname:    res.Hostname,
+		Action:      string(act),
+		Event:       models.OperationRequested,
+		Outcome:     res.Outcome,
+		ID:          res.ID,
+		RequestedBy: requestedBy,
+		Group:       group,
+		Command:     res.Command,
+		Detail:      res.Reason,
+	}
+	if err := store.AppendOperation(op); err != nil {
+		slog.Error("Failed to log "+string(act)+" request", "hostname", res.Hostname, "error", err)
+	}
+}
+
+// attempt is dispatch without the log line.
+func attempt(store storage.Storage, act action, req requesters, hostname, requestedBy string) HostActionResult {
 	res := HostActionResult{Hostname: hostname}
 
 	system, err := store.GetSystem(hostname)
@@ -229,7 +261,7 @@ func refusalReason(act action) string {
 // take no context and a published NATS request cannot be recalled, so
 // cancelling the wait would end goroutines that were going to finish inside ten
 // seconds anyway, while the commands it "cancelled" still ran.
-func dispatchGroup(store storage.Storage, act action, req requesters, members []string, requestedBy string) []HostActionResult {
+func dispatchGroup(store storage.Storage, act action, req requesters, group string, members []string, requestedBy string) []HostActionResult {
 	results := make([]HostActionResult, len(members))
 
 	var wg sync.WaitGroup
@@ -239,7 +271,7 @@ func dispatchGroup(store storage.Storage, act action, req requesters, members []
 			defer wg.Done()
 			// Each goroutine owns one index of a pre-sized slice, so there is
 			// nothing to lock.
-			results[i] = dispatch(store, act, req, hostname, requestedBy)
+			results[i] = dispatch(store, act, req, hostname, requestedBy, group)
 		}(i, hostname)
 	}
 	wg.Wait()

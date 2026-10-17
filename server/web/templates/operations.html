@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operations log - My Update Center</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>
+        // Apply theme immediately to prevent flash of unstyled content
+        (function() {
+            const theme = localStorage.getItem('muc-theme') ||
+                (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            if (theme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+    <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=18">
+    <script src="/static/theme.js" defer></script>
+    <script src="/static/operations.js?v=1" defer></script>
+</head>
+<body>
+    <header class="masthead">
+        <h1>Operations log</h1>
+        <div class="masthead-tools">
+            <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+        </div>
+    </header>
+    <!-- Every update, reboot and check-in the dashboard asked for, and what
+         each host said about it, newest first. -->
+    <div class="oplog-filter">
+        <label for="oplog-host">Host</label>
+        <select id="oplog-host">
+            <option value="">All hosts</option>
+        </select>
+        <span id="oplog-status" class="oplog-status" role="status"></span>
+    </div>
+    <table class="oplog">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Host</th>
+                <th>Action</th>
+                <th>What happened</th>
+                <th>Requested by</th>
+                <th>Detail</th>
+            </tr>
+        </thead>
+        <tbody id="oplog-rows"></tbody>
+    </table>
+    <div class="oplog-more">
+        <button id="oplog-more" style="display: none;">Show older</button>
+    </div>
+    <footer class="floating-footer">
+        <a href="/">Home</a>
+        <span class="separator">|</span>
+        <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
+        <span class="separator">|</span>
+        <a href="/operations">Operations log</a>
+        <span class="separator">|</span>
+        <a href="/apidoc">API Documentation</a>
+        <span class="separator">|</span>
+        <span>{{VERSION}}</span>
+    </footer>
+</body>
+</html>

@@ -184,6 +184,10 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 	r.HandleFunc("/api/systems/{hostname}/update/output", api.UpdateOutputHandler(runs)).Methods("GET")
 	r.HandleFunc("/api/features", api.FeaturesHandler(updater, rebooter)).Methods("GET")
 
+	// The operations log: what hosts were asked to do and what they said.
+	r.HandleFunc("/api/operations", api.OperationsHandler(store)).Methods("GET")
+	r.HandleFunc("/api/systems/{hostname}/operations", api.SystemOperationsHandler(store)).Methods("GET")
+
 	// Groups. They need no configuration of their own: a group is server-side
 	// bookkeeping, so the CRUD routes are always on, and the two group actions
 	// that can do something to a host are gated by exactly the flags their
@@ -201,6 +205,9 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 
 	// API documentation endpoint
 	r.HandleFunc("/apidoc", apiDocsHandler(version))
+
+	// The operations log, for every host or (with ?host=) for one.
+	r.HandleFunc("/operations", pageHandler("templates/operations.html", version))
 
 	// Serve the main page from embedded filesystem
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -330,6 +337,21 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 }
 
 // apiDocsHandler serves the API documentation page
+// pageHandler serves one of the embedded pages with its version filled in.
+func pageHandler(name, version string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := templateFiles.ReadFile(name)
+		if err != nil {
+			slog.Error("Failed to read page", "page", name, "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		data = bytes.ReplaceAll(data, []byte("{{VERSION}}"), []byte(version))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(data)
+	}
+}
+
 func apiDocsHandler(version string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := templateFiles.ReadFile("templates/apidoc.html")

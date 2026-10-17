@@ -99,6 +99,16 @@ func rebootResultHandler(store storage.Storage) nats.MsgHandler {
 		}
 
 		slog.Info("Recorded reboot", "hostname", hostname, "id", reboot.ID, "status", reboot.Status)
+
+		logOperation(store, models.Operation{
+			Hostname:    hostname,
+			Action:      "reboot",
+			Event:       reboot.Status,
+			ID:          reboot.ID,
+			RequestedBy: reboot.RequestedBy,
+			Command:     reboot.Command,
+			Detail:      reboot.Error,
+		})
 	}
 }
 

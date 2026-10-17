@@ -27,6 +27,33 @@ type fakeStorage struct {
 	// groupErr, when set, fails every group read and write, for the tests that
 	// need the storage layer to break.
 	groupErr error
+
+	// ops is the operations log, newest last. Group actions append from
+	// several goroutines at once, hence the lock.
+	opsMu sync.Mutex
+	ops   []models.Operation
+}
+
+func (f *fakeStorage) AppendOperation(op models.Operation) error {
+	f.opsMu.Lock()
+	defer f.opsMu.Unlock()
+	op.Seq = uint64(len(f.ops) + 1)
+	f.ops = append(f.ops, op)
+	return nil
+}
+
+func (f *fakeStorage) GetOperations(hostname string, before uint64, limit int) ([]models.Operation, error) {
+	f.opsMu.Lock()
+	defer f.opsMu.Unlock()
+	ops := []models.Operation{}
+	for i := len(f.ops) - 1; i >= 0 && len(ops) < limit; i-- {
+		op := f.ops[i]
+		if (before > 0 && op.Seq >= before) || (hostname != "" && op.Hostname != hostname) {
+			continue
+		}
+		ops = append(ops, op)
+	}
+	return ops, nil
 }
 
 func (f *fakeStorage) SaveSystem(hostname string, system models.System) error { return nil }

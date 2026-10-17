@@ -390,6 +390,91 @@
         <div class="endpoint">
             <div class="endpoint-header">
                 <span class="method get">GET</span>
+                <span class="path">/api/operations</span>
+            </div>
+            <div class="description">
+                Returns the operations log, newest first: every update, reboot and check-in requested from the dashboard
+                or this API — including those skipped or refused before they reached the host — and what each host
+                reported about it afterwards. A request and the results that follow it share an <code>id</code>. The
+                server keeps the most recent 10,000 entries, and a host's entries outlive the host.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Query Parameters</div>
+                <div class="param">
+                    <div class="param-name">host</div>
+                    <div class="param-desc">Only this host's entries (optional)</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">limit</div>
+                    <div class="param-desc">Entries to return: 100 by default, at most 1000 (optional)</div>
+                </div>
+                <div class="param">
+                    <div class="param-name">before</div>
+                    <div class="param-desc">The <code>seq</code> of the oldest entry already read, to page further back (optional)</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                    <span>An array of Operation entries; empty when there are none</span>
+                </div>
+                <div class="code-block">[
+  {
+    "seq": 42,
+    "time": "2026-10-16T14:03:11Z",
+    "hostname": "smallboi",
+    "action": "update",
+    "event": "succeeded",
+    "id": "9f2c1b0a4d5e6f70",
+    "requested_by": "192.168.1.20",
+    "command": "dnf upgrade -y"
+  },
+  {
+    "seq": 41,
+    "time": "2026-10-16T14:01:58Z",
+    "hostname": "smallboi",
+    "action": "update",
+    "event": "requested",
+    "outcome": "accepted",
+    "id": "9f2c1b0a4d5e6f70",
+    "requested_by": "192.168.1.20",
+    "group": "lab",
+    "command": "dnf upgrade -y"
+  }
+]</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code error">400 Bad Request</span>
+                    <span><code>limit</code> is not a positive whole number, or <code>before</code> is not a whole number</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/systems/{hostname}/operations</span>
+            </div>
+            <div class="description">
+                The operations log for one host — the same as <code>/api/operations?host={hostname}</code>, and takes the
+                same <code>limit</code> and <code>before</code>. A host the server no longer knows still has its history,
+                so an unknown hostname returns an empty array rather than 404.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Path Parameters</div>
+                <div class="param">
+                    <div class="param-name">hostname</div>
+                    <div class="param-desc">The host whose operations to return (required)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
                 <span class="path">/api/features</span>
             </div>
             <div class="description">
@@ -968,6 +1053,23 @@ curl http://localhost:8080/metrics</div>
             </div>
 
             <div class="param">
+                <div class="param-name">Operation</div>
+                <div class="param-desc">
+                    <strong>seq</strong> (number): Position in the log; pass as <code>before</code> to read further back<br>
+                    <strong>time</strong> (string): ISO 8601 UTC timestamp<br>
+                    <strong>hostname</strong> (string): The host the operation was about<br>
+                    <strong>action</strong> (string): "update", "reboot", or "checkin"<br>
+                    <strong>event</strong> (string): "requested" (the server asked), "running", "succeeded", or "failed" (an update run reported), "rebooting" or "failed" (a reboot reported), or "rebooted" (the host's next check-in showed it came back)<br>
+                    <strong>outcome</strong> (string, optional): On "requested" only: "accepted", "skipped", "refused", "unreachable", or "failed"<br>
+                    <strong>id</strong> (string, optional): Ties a request to the results that follow it<br>
+                    <strong>requested_by</strong> (string, optional): Address the request came from<br>
+                    <strong>group</strong> (string, optional): The group the request was made through<br>
+                    <strong>command</strong> (string, optional): The command the host ran<br>
+                    <strong>detail</strong> (string, optional): Why a request was not sent or was refused, or how a run failed
+                </div>
+            </div>
+
+            <div class="param">
                 <div class="param-name">Update</div>
                 <div class="param-desc">
                     <strong>name</strong> (string): Package name<br>
@@ -983,6 +1085,8 @@ curl http://localhost:8080/metrics</div>
         <a href="/">Home</a>
         <span class="separator">|</span>
         <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
+        <span class="separator">|</span>
+        <a href="/operations">Operations log</a>
         <span class="separator">|</span>
         <a href="/apidoc">API Documentation</a>
         <span class="separator">|</span>
