@@ -202,6 +202,31 @@ h1 {
     gap: 8px;
 }
 
+/* The way back to the dashboard from the pages that hang off it. It sits
+   with the tools and is cut like a button beside them, so it is where the
+   eye already is at the top of a long page, not only in the footer. */
+.masthead-home {
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    font-stretch: 94%;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.masthead-home:hover {
+    background: var(--bg-hover);
+    border-color: var(--text-secondary);
+}
+
 /* ------------------------------------------------------------------ */
 /* Buttons                                                             */
 /* ------------------------------------------------------------------ */
