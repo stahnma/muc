@@ -15,13 +15,21 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/apidoc.css">
+    <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=19">
+    <link rel="stylesheet" href="/static/apidoc.css?v=2">
     <script src="/static/theme.js" defer></script>
 </head>
 <body>
-    <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
-    <div class="container">
+    <header class="masthead">
         <h1>API Documentation</h1>
+        <div class="masthead-tools">
+            <a href="/" class="masthead-home">← Dashboard</a>
+            <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+        </div>
+    </header>
+    <div class="container">
         <p class="subtitle">My Update Center Server API Reference</p>
 
         <div class="endpoint">
@@ -1078,8 +1086,6 @@ curl http://localhost:8080/metrics</div>
                 </div>
             </div>
         </div>
-
-        <a href="/" class="back-link">← Back to Dashboard</a>
     </div>
     <footer class="floating-footer">
         <a href="/">Home</a>
