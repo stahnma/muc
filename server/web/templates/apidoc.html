@@ -17,7 +17,7 @@
     </script>
     <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=19">
+    <link rel="stylesheet" href="/static/styles.css?v=20">
     <link rel="stylesheet" href="/static/apidoc.css?v=2">
     <script src="/static/theme.js" defer></script>
 </head>
@@ -25,7 +25,11 @@
     <header class="masthead">
         <h1>API Documentation</h1>
         <div class="masthead-tools">
-            <a href="/" class="masthead-home">← Dashboard</a>
+            <nav class="site-nav" aria-label="Site">
+                <a href="/">Dashboard</a>
+                <a href="/operations">Operations log</a>
+                <a href="/apidoc" aria-current="page">API docs</a>
+            </nav>
             <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
         </div>
     </header>
@@ -1088,13 +1092,7 @@ curl http://localhost:8080/metrics</div>
         </div>
     </div>
     <footer class="floating-footer">
-        <a href="/">Home</a>
-        <span class="separator">|</span>
         <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
-        <span class="separator">|</span>
-        <a href="/operations">Operations log</a>
-        <span class="separator">|</span>
-        <a href="/apidoc">API Documentation</a>
         <span class="separator">|</span>
         <span>{{VERSION}}</span>
     </footer>

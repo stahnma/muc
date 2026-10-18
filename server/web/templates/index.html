@@ -17,14 +17,19 @@
     </script>
     <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=19">
+    <link rel="stylesheet" href="/static/styles.css?v=20">
     <script src="/static/theme.js" defer></script>
-    <script src="/static/app.js?v=18" defer></script>
+    <script src="/static/app.js?v=19" defer></script>
 </head>
 <body>
     <header class="masthead">
         <h1>My Update Center</h1>
         <div class="masthead-tools">
+            <nav class="site-nav" aria-label="Site">
+                <a href="/" aria-current="page">Dashboard</a>
+                <a href="/operations">Operations log</a>
+                <a href="/apidoc">API docs</a>
+            </nav>
             <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
         </div>
     </header>
@@ -52,13 +57,7 @@
         </tbody>
     </table>
     <footer class="floating-footer">
-        <a href="/">Home</a>
-        <span class="separator">|</span>
         <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
-        <span class="separator">|</span>
-        <a href="/operations">Operations log</a>
-        <span class="separator">|</span>
-        <a href="/apidoc">API Documentation</a>
         <span class="separator">|</span>
         <span>{{VERSION}}</span>
     </footer>

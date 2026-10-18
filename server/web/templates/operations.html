@@ -17,7 +17,7 @@
     </script>
     <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=19">
+    <link rel="stylesheet" href="/static/styles.css?v=20">
     <script src="/static/theme.js" defer></script>
     <script src="/static/operations.js?v=1" defer></script>
 </head>
@@ -25,7 +25,11 @@
     <header class="masthead">
         <h1>Operations log</h1>
         <div class="masthead-tools">
-            <a href="/" class="masthead-home">← Dashboard</a>
+            <nav class="site-nav" aria-label="Site">
+                <a href="/">Dashboard</a>
+                <a href="/operations" aria-current="page">Operations log</a>
+                <a href="/apidoc">API docs</a>
+            </nav>
             <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
         </div>
     </header>
@@ -55,13 +59,7 @@
         <button id="oplog-more" style="display: none;">Show older</button>
     </div>
     <footer class="floating-footer">
-        <a href="/">Home</a>
-        <span class="separator">|</span>
         <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
-        <span class="separator">|</span>
-        <a href="/operations">Operations log</a>
-        <span class="separator">|</span>
-        <a href="/apidoc">API Documentation</a>
         <span class="separator">|</span>
         <span>{{VERSION}}</span>
     </footer>

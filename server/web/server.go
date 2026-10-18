@@ -209,6 +209,11 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 	// The operations log, for every host or (with ?host=) for one.
 	r.HandleFunc("/operations", pageHandler("templates/operations.html", version))
 
+	// One host's own page. The page reads the hostname from its path and
+	// draws the host from the API, so an unknown name is the page's to
+	// report rather than a 404 from here.
+	r.HandleFunc("/hosts/{hostname}", pageHandler("templates/host.html", version))
+
 	// Serve the main page from embedded filesystem
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		data, err := templateFiles.ReadFile("templates/index.html")
