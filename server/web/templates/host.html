@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Host - My Update Center</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>
+        // Apply theme immediately to prevent flash of unstyled content
+        (function() {
+            const theme = localStorage.getItem('muc-theme') ||
+                (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            if (theme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+    <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=20">
+    <script src="/static/theme.js" defer></script>
+    <script src="/static/app.js?v=19" defer></script>
+</head>
+<body class="host-page">
+    <header class="masthead">
+        <h1 id="host-title">Host</h1>
+        <div class="masthead-tools">
+            <nav class="site-nav" aria-label="Site">
+                <a href="/">Dashboard</a>
+                <a href="/operations">Operations log</a>
+                <a href="/apidoc">API docs</a>
+            </nav>
+            <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+        </div>
+    </header>
+    <!-- One host's own page: the dashboard's table narrowed to that host, its
+         details always open. app.js reads the hostname from the path. -->
+    <table>
+        <thead>
+            <tr>
+                <th class="chevron-col"><span class="visually-hidden">Details</span></th>
+                <th class="sortable" data-column="hostname">Hostname</th>
+                <th class="sortable" data-column="os">OS</th>
+                <th class="sortable" data-column="architecture">Arch</th>
+                <th class="sortable" data-column="ip">IP</th>
+                <th class="sortable" data-column="updates_available">Updates</th>
+                <th class="sortable" data-column="uptime_seconds">Uptime</th>
+                <th class="sortable" data-column="last_seen">Last Seen</th>
+                <th class="actions-col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+        </thead>
+        <tbody id="systems">
+            <!-- Rows will be dynamically rendered -->
+        </tbody>
+    </table>
+    <footer class="floating-footer">
+        <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
+        <span class="separator">|</span>
+        <span>{{VERSION}}</span>
+    </footer>
+</body>
+</html>
+

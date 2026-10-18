@@ -17,6 +17,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const INITIAL_RECONNECT_DELAY = 1000; // 1 second
     let expandedSystems = new Set(); // Track manually expanded systems
 
+    // On a host's own page, /hosts/<name>, this same table shows just that
+    // host with its details held open. Everything else (the actions, the
+    // live output, the WebSocket) is the dashboard's own code, narrowed to
+    // one row, so the two views cannot drift apart.
+    const hostPath = window.location.pathname.match(/^\/hosts\/([^/]+)\/?$/);
+    const singleHost = hostPath ? decodeURIComponent(hostPath[1]) : null;
+    if (singleHost) {
+        expandedSystems.add(singleHost);
+        document.title = `${singleHost} - My Update Center`;
+        const title = document.getElementById("host-title");
+        if (title) title.textContent = singleHost;
+    }
+
     // Optional server capabilities, read from /api/features. Remote updates are
     // assumed off until the server says otherwise, so a server that does not
     // offer them never draws a button for them.
@@ -427,6 +440,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function filterByGroup(systems) {
+        if (singleHost) return systems.filter((s) => s && s.hostname === singleHost);
         if (!groupFilter) return systems;
         if (groupFilter === UNGROUPED) {
             return systems.filter((s) => s && manualGroupsForHost(s.hostname).length === 0);
@@ -743,7 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
                            data-group="${escapeHtml(group.name)}"${selected.has(group.name) ? ' checked' : ''}${saving ? ' disabled' : ''}>
                     ${escapeHtml(group.name)}
                 </label>`).join('')
-            : '<span class="group-editor-empty">No groups of your own yet. Make one with + New group above the table.</span>';
+            : `<span class="group-editor-empty">No groups of your own yet. Make one with + New group ${singleHost ? 'on the <a href="/">dashboard</a>' : 'above the table'}.</span>`;
 
         return `<div class="group-editor">
             <div class="group-editor-options">${boxes}</div>
@@ -1307,6 +1321,18 @@ document.addEventListener("DOMContentLoaded", () => {
         const unfilteredCount = systems.length;
         systems = filterByGroup(systems);
 
+        if (singleHost && systems.length === 0) {
+            systemsTable.innerHTML = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                        <div style="font-weight: 500; margin-bottom: 4px;">No host named ${escapeHtml(singleHost)} is known here</div>
+                        <div style="font-size: 13px; opacity: 0.8;">It may have been removed, or not have checked in yet. <a href="/">Back to the dashboard</a></div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
         // An empty group is a different thing from an empty fleet, and saying
         // "no systems have checked in yet" under a group whose members simply
         // have no rows yet would be a lie.
@@ -1381,7 +1407,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><button class="chevron" aria-expanded="false" aria-label="Details for ${escapeHtml(system.hostname)}">▶</button></td>
-                        <td>${tailnetIndicator(system, showTailnetSlot)}${escapeHtml(system.hostname)}${rebootIndicator(system)}${groupChips(system.hostname)}</td>
+                        <td>${tailnetIndicator(system, showTailnetSlot)}${singleHost ? escapeHtml(system.hostname) : `<a class="host-link" href="/hosts/${escapeHtml(encodeURIComponent(system.hostname))}">${escapeHtml(system.hostname)}</a>`}${rebootIndicator(system)}${groupChips(system.hostname)}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
@@ -2001,6 +2027,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     systemsData.splice(index, 1);
                 }
                 
+                // A host's own page has nothing left to show once the host
+                // is gone, so it goes back to the dashboard.
+                if (singleHost) {
+                    window.location.href = "/";
+                    return;
+                }
+
                 // Re-render the table (this will remove the deleted system)
                 renderSystems(Array.from(systemsData));
             })
@@ -2122,6 +2155,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         ? `<dl class="system-info">${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>`
                         : ''}
                     <a class="details-oplog-link" href="/operations?host=${escapeHtml(encodeURIComponent(hostname))}">Operations log for this host</a>
+                    ${singleHost ? '' : `<a class="details-oplog-link" href="/hosts/${escapeHtml(encodeURIComponent(hostname))}">Open host page</a>`}
                 </section>
                 <section class="details-groups">
                     <h4>Groups</h4>
@@ -2202,7 +2236,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!detailsContent.dataset.loaded || Date.now() - detailsContent.dataset.loadedTime > 60000) {
                 loadSystemDetails(hostname, detailsContent);
             }
-        } else {
+        } else if (!singleHost) {
             detailsRow.style.display = "none";
             setChevron(chevron, false);
             expandedSystems.delete(hostname);
