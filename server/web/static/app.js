@@ -490,24 +490,33 @@ document.addEventListener("DOMContentLoaded", () => {
                 `<span class="group-count">${(group.members || []).length}</span></button>`;
         };
 
-        const chips = [
+        const whole = [
             `<button class="group-chip${groupFilter === "" ? ' active' : ''}" data-filter="">All hosts <span class="group-count">${systemsData.length}</span></button>`,
         ];
-        // Derived first, then the hand-made ones: the derived set is a fixed
-        // reading of the fleet, while the groups below it are the ones someone
-        // decided on.
-        derivedGroups().forEach((group) => chips.push(chip(group)));
-        manualGroups().forEach((group) => chips.push(chip(group)));
         if (ungroupedCount > 0) {
-            chips.push(
+            whole.push(
                 `<button class="group-chip${groupFilter === UNGROUPED ? ' active' : ''}" data-filter="${UNGROUPED}" ` +
                 `title="Hosts in no hand-made group. Derived groups do not count — every host is in several.">` +
                 `Ungrouped <span class="group-count">${ungroupedCount}</span></button>`
             );
         }
-        chips.push(`<button class="group-chip new-group-btn" id="new-group-btn">+ New group</button>`);
 
-        bar.innerHTML = chips.join('');
+        // The hand-made groups first, then the derived ones: the groups
+        // someone decided on are the ones looked through most, while the
+        // derived set is a fixed (and longer) reading of the fleet.
+        const section = (heading, items) => `<div class="group-section">` +
+            (heading ? `<h3 class="group-heading">${heading}</h3>` : '') +
+            items.join('') + `</div>`;
+        const derived = derivedGroups().map(chip);
+
+        bar.innerHTML = [
+            section('', whole),
+            section('Your groups', [
+                ...manualGroups().map(chip),
+                `<button class="group-chip new-group-btn" id="new-group-btn">+ New group</button>`,
+            ]),
+            derived.length ? section('From what hosts report', derived) : '',
+        ].join('');
         renderGroupActions();
     }
 
@@ -729,6 +738,21 @@ document.addEventListener("DOMContentLoaded", () => {
     // The per-host editor in the expanded row. Groups are a property of the
     // host rather than an action on it, so this sits with the system
     // information and not in the actions footer.
+    // The dashboard's expanded row says which groups a host is in; changing
+    // that is done on the host's own page, where the editor has room.
+    function groupSummaryHTML(hostname) {
+        const names = manualGroupsForHost(hostname);
+        const chips = names.length
+            ? names.map((n) => `<span class="host-group-chip">${escapeHtml(n)}</span>`).join('')
+            : '<span class="group-editor-empty">In no groups of your own.</span>';
+        return `<div class="group-editor-options">${chips}</div>
+            <a class="details-oplog-link" href="${hostPageHref(hostname)}">Edit groups on the host page</a>`;
+    }
+
+    function hostPageHref(hostname) {
+        return `/hosts/${escapeHtml(encodeURIComponent(hostname))}`;
+    }
+
     function groupEditorHTML(hostname) {
         const manual = manualGroups();
         const selected = new Set(manualGroupsForHost(hostname));
@@ -757,7 +781,7 @@ document.addEventListener("DOMContentLoaded", () => {
                            data-group="${escapeHtml(group.name)}"${selected.has(group.name) ? ' checked' : ''}${saving ? ' disabled' : ''}>
                     ${escapeHtml(group.name)}
                 </label>`).join('')
-            : `<span class="group-editor-empty">No groups of your own yet. Make one with + New group ${singleHost ? 'on the <a href="/">dashboard</a>' : 'above the table'}.</span>`;
+            : `<span class="group-editor-empty">No groups of your own yet. Make one with + New group on the <a href="/">dashboard</a>.</span>`;
 
         return `<div class="group-editor">
             <div class="group-editor-options">${boxes}</div>
@@ -1407,7 +1431,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         return `
                     <tr data-hostname="${escapeHtml(system.hostname)}"${isStale ? ' class="stale-checkin"' : ''}>
                         <td class="chevron-cell"><button class="chevron" aria-expanded="false" aria-label="Details for ${escapeHtml(system.hostname)}">▶</button></td>
-                        <td>${tailnetIndicator(system, showTailnetSlot)}${singleHost ? escapeHtml(system.hostname) : `<a class="host-link" href="/hosts/${escapeHtml(encodeURIComponent(system.hostname))}">${escapeHtml(system.hostname)}</a>`}${rebootIndicator(system)}${groupChips(system.hostname)}</td>
+                        <td>${tailnetIndicator(system, showTailnetSlot)}${singleHost ? escapeHtml(system.hostname) : `<a class="host-link" href="${hostPageHref(system.hostname)}">${escapeHtml(system.hostname)}</a>`}${rebootIndicator(system)}${groupChips(system.hostname)}</td>
                         <td class="os-cell">${getOSIcon(system.os)} <span class="os-text">${escapeHtml(system.os || '')} ${escapeHtml(system.os_version || '')}</span></td>
                         <td>${escapeHtml(system.architecture || '')}</td>
                         <td>${escapeHtml(system.ip || '')}</td>
@@ -1659,7 +1683,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const open = remembered && remembered.id === run.id
             ? remembered.open
             : active || run.status === "failed";
-        const output = (text || active)
+        // The dashboard's row keeps to the status line and points at the
+        // host's page for the output itself: a page of package names is what
+        // made the row too tall to scan the table around it.
+        const output = !singleHost
+            ? ((text || active)
+                ? `<a class="details-oplog-link" href="${hostPageHref(hostname)}">${active ? 'Watch the live output' : 'Command output'} on the host page</a>`
+                : '')
+            : (text || active)
             ? `<details class="update-run-output"${open ? " open" : ""}>
                     <summary>Command output${active ? ' <span class="update-run-live">live</span>' : ''}</summary>
                     <pre>${text
@@ -2155,11 +2186,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         ? `<dl class="system-info">${infoRows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>`
                         : ''}
                     <a class="details-oplog-link" href="/operations?host=${escapeHtml(encodeURIComponent(hostname))}">Operations log for this host</a>
-                    ${singleHost ? '' : `<a class="details-oplog-link" href="/hosts/${escapeHtml(encodeURIComponent(hostname))}">Open host page</a>`}
+                    ${singleHost ? '' : `<a class="details-oplog-link" href="${hostPageHref(hostname)}">Open host page</a>`}
                 </section>
                 <section class="details-groups">
                     <h4>Groups</h4>
-                    ${groupEditorHTML(hostname)}
+                    ${singleHost ? groupEditorHTML(hostname) : groupSummaryHTML(hostname)}
                     <div class="details-remove">
                         ${silentNote}
                         <button class="delete-system-btn" data-hostname="${escapeHtml(hostname)}">Remove host</button>

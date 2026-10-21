@@ -17,50 +17,60 @@
     </script>
     <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20">
+    <link rel="stylesheet" href="/static/styles.css?v=21">
     <script src="/static/theme.js" defer></script>
-    <script src="/static/app.js?v=19" defer></script>
+    <script src="/static/app.js?v=20" defer></script>
 </head>
 <body>
-    <header class="masthead">
-        <h1>My Update Center</h1>
-        <div class="masthead-tools">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-brand" href="/">My Update Center</a>
             <nav class="site-nav" aria-label="Site">
                 <a href="/" aria-current="page">Dashboard</a>
                 <a href="/operations">Operations log</a>
                 <a href="/apidoc">API docs</a>
             </nav>
-            <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+            <!-- Groups. Picking one filters the table; the actions that apply
+                 to all of it, and the report of what they did, show above
+                 the table. -->
+            <section class="sidebar-groups" aria-label="Groups">
+                <div id="group-bar" class="group-bar"></div>
+            </section>
+        </aside>
+        <div class="page">
+            <header class="masthead">
+                <h1>My Update Center</h1>
+                <div class="masthead-tools">
+                    <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+                </div>
+            </header>
+            <div id="group-actions" class="group-actions" style="display: none;"></div>
+            <div id="group-action-report" class="group-action-report" style="display: none;"></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="chevron-col"><span class="visually-hidden">Details</span></th>
+                        <th class="sortable" data-column="hostname">Hostname</th>
+                        <th class="sortable" data-column="os">OS</th>
+                        <th class="sortable" data-column="architecture">Arch</th>
+                        <th class="sortable" data-column="ip">IP</th>
+                        <th class="sortable" data-column="updates_available">Updates</th>
+                        <th class="sortable" data-column="uptime_seconds">Uptime</th>
+                        <th class="sortable" data-column="last_seen">Last Seen</th>
+                        <th class="actions-col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody id="systems">
+                    <!-- Rows will be dynamically rendered -->
+                </tbody>
+            </table>
+            <footer class="floating-footer">
+                <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
+                <span class="separator">|</span>
+                <span>{{VERSION}}</span>
+            </footer>
         </div>
-    </header>
-    <!-- Groups. The bar filters the table below; picking one group reveals the
-         actions that apply to all of it, and the report of what they did. -->
-    <div id="group-bar" class="group-bar"></div>
-    <div id="group-actions" class="group-actions" style="display: none;"></div>
-    <div id="group-action-report" class="group-action-report" style="display: none;"></div>
-    <table>
-        <thead>
-            <tr>
-                <th class="chevron-col"><span class="visually-hidden">Details</span></th>
-                <th class="sortable" data-column="hostname">Hostname</th>
-                <th class="sortable" data-column="os">OS</th>
-                <th class="sortable" data-column="architecture">Arch</th>
-                <th class="sortable" data-column="ip">IP</th>
-                <th class="sortable" data-column="updates_available">Updates</th>
-                <th class="sortable" data-column="uptime_seconds">Uptime</th>
-                <th class="sortable" data-column="last_seen">Last Seen</th>
-                <th class="actions-col"><span class="visually-hidden">Actions</span></th>
-            </tr>
-        </thead>
-        <tbody id="systems">
-            <!-- Rows will be dynamically rendered -->
-        </tbody>
-    </table>
-    <footer class="floating-footer">
-        <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
-        <span class="separator">|</span>
-        <span>{{VERSION}}</span>
-    </footer>
+    </div>
 </body>
 </html>
 

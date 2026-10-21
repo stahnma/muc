@@ -17,19 +17,26 @@
     </script>
     <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=20">
+    <link rel="stylesheet" href="/static/styles.css?v=21">
     <link rel="stylesheet" href="/static/apidoc.css?v=2">
     <script src="/static/theme.js" defer></script>
 </head>
 <body>
-    <header class="masthead">
-        <h1>API Documentation</h1>
-        <div class="masthead-tools">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-brand" href="/">My Update Center</a>
             <nav class="site-nav" aria-label="Site">
                 <a href="/">Dashboard</a>
                 <a href="/operations">Operations log</a>
                 <a href="/apidoc" aria-current="page">API docs</a>
             </nav>
+        </aside>
+        <div class="page">
+<!-- The reference below is left at its own indentation: the code samples
+     are preformatted, so indenting them would indent what they show. -->
+    <header class="masthead">
+        <h1>API Documentation</h1>
+        <div class="masthead-tools">
             <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
         </div>
     </header>
@@ -1096,6 +1103,8 @@ curl http://localhost:8080/metrics</div>
         <span class="separator">|</span>
         <span>{{VERSION}}</span>
     </footer>
+        </div>
+    </div>
 </body>
 </html>
 

@@ -202,40 +202,83 @@ h1 {
     gap: 8px;
 }
 
-/* The site's pages, at the top of every one of them. A row of keys cut like
-   the buttons beside it, joined into one strip; the page you are on is the
-   one with tape on it. New pages go here, not into the footer. */
+/* ------------------------------------------------------------------ */
+/* Sidebar                                                             */
+/*                                                                     */
+/* The left edge of every page: where you are, where else you can go,  */
+/* and on the dashboard the groups to look at the fleet through. It    */
+/* stays put while the page scrolls, and scrolls on its own when the   */
+/* group list is longer than the window.                               */
+/* ------------------------------------------------------------------ */
+
+.app-shell {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-height: 100vh;
+}
+
+.sidebar {
+    flex: 0 0 220px;
+    width: 220px;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 28px 14px 24px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+}
+
+/* The page beside it: masthead, content and footer, the footer pushed to
+   the bottom of a short page as it was when this was the whole body. */
+.page {
+    flex: 1;
+    min-width: 0;
+    /* The content's own 1400px plus its gutters. On a screen wider than
+       that the spare room collects on the right, so the table stays beside
+       the sidebar instead of floating off in the middle of the window. */
+    max-width: 1448px;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-brand {
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 800;
+    font-stretch: 112%;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--text-secondary);
+}
+
+.sidebar-brand:hover {
+    color: var(--text-primary);
+}
+
+/* The site's pages. The one you are on has tape on it. New pages go here,
+   not into the footer. */
 .site-nav {
-    display: inline-flex;
-    height: 34px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .site-nav a {
-    display: inline-flex;
-    align-items: center;
-    padding: 0 14px;
-    font-size: 13px;
+    padding: 7px 10px;
+    font-size: 14px;
     font-weight: 600;
     font-stretch: 94%;
-    letter-spacing: 0.01em;
     text-decoration: none;
-    white-space: nowrap;
     color: var(--text-primary);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-strong);
-    transition: background-color 0.12s ease, border-color 0.12s ease;
-}
-
-.site-nav a + a {
-    border-left: none;
-}
-
-.site-nav a:first-child {
-    border-radius: var(--radius) 0 0 var(--radius);
-}
-
-.site-nav a:last-child {
-    border-radius: 0 var(--radius) var(--radius) 0;
+    border-radius: var(--radius);
+    transition: background-color 0.12s ease;
 }
 
 .site-nav a:hover {
@@ -245,6 +288,64 @@ h1 {
 .site-nav a[aria-current="page"] {
     background: var(--tape-yellow);
     color: var(--tape-ink);
+}
+
+/* In the sidebar the group chips stack into a list, a section per kind,
+   with the count at the far end of each line. */
+.sidebar .group-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
+.group-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.group-heading {
+    margin: 0 0 4px;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.sidebar .group-chip {
+    justify-content: space-between;
+    width: 100%;
+    padding: 5px 10px;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+/* The way back to the dashboard from a host's page, beside the theme key:
+   the sidebar has it too, but this is where the eye already is. */
+.back-to-hud {
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    font-stretch: 94%;
+    text-decoration: none;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.back-to-hud:hover {
+    background: var(--bg-hover);
+    border-color: var(--text-secondary);
 }
 
 /* A hostname in the table leads to that host's own page. It reads as the
@@ -1605,8 +1706,43 @@ button.group-report-dismiss:hover {
         padding: 24px 16px 16px;
     }
 
-    .masthead-tools {
+    /* The sidebar becomes a band across the top: the pages in a row, the
+       groups wrapping as chips beneath them. */
+    .app-shell {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        position: static;
+        flex: none;
+        width: auto;
+        height: auto;
+        gap: 12px;
+        padding: 16px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .site-nav {
+        flex-direction: row;
         flex-wrap: wrap;
+    }
+
+    .sidebar .group-bar,
+    .group-section {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .group-heading {
+        margin: 0 4px 0 0;
+        padding: 0;
+    }
+
+    .sidebar .group-chip {
+        width: auto;
     }
 
     h1 {
