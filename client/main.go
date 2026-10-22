@@ -478,10 +478,23 @@ func main() {
 		}
 	}
 
-	// Send the first update immediately
-	if checkConnection() {
+	// lastDB is the package database as it stood when the last check began.
+	// The settle timer compares against it, because the path unit that sends
+	// SIGUSR1 also fires on our own reads of the database (see packageDBFiles);
+	// re-checking on those would loop forever. It is taken before the check so
+	// that a transaction landing mid-check still differs and gets looked at.
+	var lastDB string
+	var haveDB bool
+	check := func() {
+		if !checkConnection() {
+			return
+		}
+		lastDB, haveDB = packageDBFingerprint(packageDBFiles)
 		sendSystemUpdate(nc, caps)
 	}
+
+	// Send the first update immediately
+	check()
 
 	// Run the client as a long-running daemon
 	ticker := time.NewTicker(5 * time.Minute)
@@ -507,9 +520,7 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			if checkConnection() {
-				sendSystemUpdate(nc, caps)
-			}
+			check()
 		case <-healthTicker.C:
 			checkConnection()
 		case <-recheck:
@@ -530,14 +541,14 @@ func main() {
 			// answers it.
 			slog.Info("Immediate re-check requested; checking in now")
 			settle.disarm()
-			if checkConnection() {
-				sendSystemUpdate(nc, caps)
-			}
+			check()
 		case <-settle.C():
-			slog.Info("Package transaction detected; re-checking for updates")
-			if checkConnection() {
-				sendSystemUpdate(nc, caps)
+			if fp, ok := packageDBFingerprint(packageDBFiles); ok && haveDB && fp == lastDB {
+				slog.Debug("Package database unchanged since the last check; not re-checking")
+				continue
 			}
+			slog.Info("Package transaction detected; re-checking for updates")
+			check()
 		}
 	}
 }
