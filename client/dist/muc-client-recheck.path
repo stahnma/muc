@@ -11,6 +11,11 @@ Documentation=man:systemd.path(5)
 # rpmdb.sqlite itself untouched until a checkpoint. A directory watch also picks
 # up the journal/lock files rpm and dpkg create during a transaction.
 #
+# The directory watch also fires on plain reads, including the client's own
+# update check: any rpm query writes rpmdb.sqlite-shm. The client therefore
+# compares the database files themselves before acting on the signal, so those
+# reads cost one skipped check rather than a loop (see client/pkgdb.go).
+#
 # A PathChanged= on a path that does not exist simply waits for it to appear, so
 # both lines are harmless on the distro family that lacks the other.
 PathChanged=/var/lib/rpm
