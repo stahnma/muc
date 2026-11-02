@@ -17,7 +17,7 @@
     </script>
     <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/styles.css?v=21">
+    <link rel="stylesheet" href="/static/styles.css?v=22">
     <link rel="stylesheet" href="/static/apidoc.css?v=2">
     <script src="/static/theme.js" defer></script>
 </head>
@@ -28,6 +28,7 @@
             <nav class="site-nav" aria-label="Site">
                 <a href="/">Dashboard</a>
                 <a href="/operations">Operations log</a>
+                <a href="/hardware">Hardware</a>
                 <a href="/apidoc" aria-current="page">API docs</a>
             </nav>
         </aside>
@@ -347,6 +348,107 @@
                     <span class="response-code error">503 Service Unavailable</span>
                     <span>No response from the host: it is offline, or its client is too old to accept check-in requests</span>
                 </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method post">POST</span>
+                <span class="path">/api/systems/{hostname}/benchmark</span>
+            </div>
+            <div class="description">
+                Asks a host to run its CPU benchmark now: DEFLATE compression of a fixed corpus, timed for about three
+                seconds on one thread and three on all of them. Returns as soon as the host has accepted; the result
+                arrives a few seconds later and appears in <code>/api/hardware</code> and the operations log.
+                <br><br>
+                The server also asks on its own: a host is benchmarked a few minutes after it first checks in and
+                weekly after that, one host at a time. Like check-ins this is not gated by configuration. The host
+                refuses a run less than 10 minutes after its last one, while one is still going, or while it is busy
+                (one-minute load above 0.5 per CPU).
+            </div>
+
+            <div class="section">
+                <div class="section-title">Path Parameters</div>
+                <div class="param">
+                    <div class="param-name">hostname</div>
+                    <div class="param-desc">The hostname of the system to benchmark (required)</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">202 Accepted</span>
+                    <span>The host accepted and is running its benchmark</span>
+                </div>
+                <div class="code-block">{
+  "status": "accepted",
+  "hostname": "server1.example.com",
+  "id": "9f2c1b0a4d5e6f70",
+  "message": "server1.example.com is running its benchmark"
+}</div>
+                <div class="response-item" style="margin-top: 15px;">
+                    <span class="response-code notfound">404 Not Found</span>
+                    <span>System not found</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code notfound">409 Conflict</span>
+                    <span>The host's client is too old to run benchmarks, or the host refused (busy, or ran one recently); the reason says which</span>
+                </div>
+                <div class="response-item">
+                    <span class="response-code error">503 Service Unavailable</span>
+                    <span>No response from the host: it is offline, or its client is too old to run benchmarks</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div class="endpoint-header">
+                <span class="method get">GET</span>
+                <span class="path">/api/hardware</span>
+            </div>
+            <div class="description">
+                Every host's hardware and latest benchmark, for the <a href="/hardware">hardware page</a>. Hardware facts
+                beyond <code>cpu_model</code>, <code>cpu_cores</code> and <code>memory_total_bytes</code> are omitted for
+                clients from before this endpoint existed, and <code>benchmark</code> is omitted until a host has run one.
+                <code>disk_*</code> describe the root filesystem; <code>disk_media</code> is one of nvme, ssd, hdd,
+                flash (SD card or eMMC) or virtual.
+            </div>
+
+            <div class="section">
+                <div class="section-title">Response</div>
+                <div class="response-item">
+                    <span class="response-code success">200 OK</span>
+                </div>
+                <div class="code-block">[
+  {
+    "hostname": "server1.example.com",
+    "architecture": "x86_64",
+    "os": "Fedora Linux 44",
+    "last_seen": "2026-11-01T12:00:00Z",
+    "cpu_model": "AMD Ryzen 7 3700X 8-Core Processor",
+    "cpu_cores": 16,
+    "cpu_physical_cores": 8,
+    "cpu_max_mhz": 4426,
+    "virtualization": "",
+    "memory_total_bytes": 16428531712,
+    "memory_available_bytes": 10522669056,
+    "disk_total_bytes": 511101108224,
+    "disk_free_bytes": 323196944384,
+    "disk_media": "nvme",
+    "benchmark_supported": true,
+    "benchmark": {
+      "id": "9f2c1b0a4d5e6f70",
+      "requested_by": "scheduler",
+      "finished_at": "2026-10-31T09:14:02Z",
+      "version": 1,
+      "single_thread_mbps": 16.4,
+      "multi_thread_mbps": 152.0,
+      "threads": 16,
+      "duration_seconds": 6.1
+    }
+  }
+]</div>
             </div>
         </div>
 
@@ -1077,7 +1179,7 @@ curl http://localhost:8080/metrics</div>
                     <strong>seq</strong> (number): Position in the log; pass as <code>before</code> to read further back<br>
                     <strong>time</strong> (string): ISO 8601 UTC timestamp<br>
                     <strong>hostname</strong> (string): The host the operation was about<br>
-                    <strong>action</strong> (string): "update", "reboot", or "checkin"<br>
+                    <strong>action</strong> (string): "update", "reboot", "checkin", or "benchmark"<br>
                     <strong>event</strong> (string): "requested" (the server asked), "running", "succeeded", or "failed" (an update run reported), "rebooting" or "failed" (a reboot reported), or "rebooted" (the host's next check-in showed it came back)<br>
                     <strong>outcome</strong> (string, optional): On "requested" only: "accepted", "skipped", "refused", "unreachable", or "failed"<br>
                     <strong>id</strong> (string, optional): Ties a request to the results that follow it<br>

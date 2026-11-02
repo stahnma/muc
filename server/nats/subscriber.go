@@ -103,6 +103,12 @@ func (c *Conn) StartSubscriber(store storage.Storage, runs *runlog.Store) error 
 	}
 	slog.Info("Successfully subscribed to subject", "subject", rebootResultSubject)
 
+	slog.Debug("Subscribing to subject pattern", "subject", benchmarkResultSubject)
+	if _, err := c.nc.Subscribe(benchmarkResultSubject, benchmarkResultHandler(store)); err != nil {
+		return err
+	}
+	slog.Info("Successfully subscribed to subject", "subject", benchmarkResultSubject)
+
 	slog.Info("NATS subscriber is now running and listening for messages...")
 	return nil
 }
@@ -161,6 +167,8 @@ func checkInHandler(store storage.Storage) nats.MsgHandler {
 			// Likewise the last reboot — and this check-in may be the one that
 			// says it happened.
 			system.LastReboot = resolveReboot(previous.LastReboot, system.UptimeSeconds, time.Now())
+			// And the last benchmark, which also arrives on its own subject.
+			system.Benchmark = previous.Benchmark
 		}
 		system.Tailscale = models.MergeTailscale(previousTailscale, system.Tailscale, time.Now())
 

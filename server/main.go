@@ -100,7 +100,12 @@ func main() {
 
 	// Start the web server
 	slog.Info("Starting web server...")
-	go web.StartWebServer(store, config.HTTPPort, Version, updater, rebooter, conn, runs)
+	go web.StartWebServer(store, config.HTTPPort, Version, updater, rebooter, conn, conn, runs)
+
+	// Benchmark each host once it shows up, and weekly after that. Like
+	// check-ins this is not gated: it changes nothing on the host, and the
+	// host bounds how often it will run.
+	api.StartBenchmarkScheduler(store, conn)
 
 	// Register with Consul in the background. Registration retries until it
 	// succeeds and is re-asserted afterward, so a Consul agent that is down at

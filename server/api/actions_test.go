@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// optedInSystem returns a host that would accept any of the three commands, so
+// optedInSystem returns a host that would accept any of the commands, so
 // a test only has to spell out the thing it is taking away.
 func optedInSystem(hostname string) models.System {
 	return models.System{
@@ -17,6 +17,7 @@ func optedInSystem(hostname string) models.System {
 		RemoteUpdatesEnabled: true,
 		RemoteRebootEnabled:  true,
 		RebootRequired:       true,
+		BenchmarkSupported:   true,
 	}
 }
 
@@ -44,7 +45,7 @@ func TestDispatchStatusMatchesSingleHostRoutes(t *testing.T) {
 		{"not listening", optedInSystem("smallboi"), true, notListening, http.StatusServiceUnavailable},
 		{"request failed", optedInSystem("smallboi"), true, errNotFound{}, http.StatusBadGateway},
 	} {
-		for _, act := range []action{actionUpdate, actionCheckIn, actionReboot} {
+		for _, act := range []action{actionUpdate, actionCheckIn, actionReboot, actionBenchmark} {
 			t.Run(string(act)+"/"+tc.name, func(t *testing.T) {
 				store := &fakeStorage{systems: []models.System{tc.system}}
 				accepted := tc.ack.(bool)
@@ -66,6 +67,10 @@ func TestDispatchStatusMatchesSingleHostRoutes(t *testing.T) {
 					f := &fakeRebooter{ack: models.RebootAck{Accepted: accepted, ID: "abc"}, err: tc.err}
 					got = statusFor(dispatch(store, act, requesters{reboot: f}, "smallboi", "tester", ""))
 					viaRoute = postReboot(RebootHandler(store, f), "smallboi").Code
+				case actionBenchmark:
+					f := &fakeBenchmarker{ack: models.BenchmarkAck{Accepted: accepted, ID: "abc"}, err: tc.err}
+					got = statusFor(dispatch(store, act, requesters{benchmark: f}, "smallboi", "tester", ""))
+					viaRoute = postBenchmark(BenchmarkHandler(store, f), "smallboi").Code
 				}
 
 				if got != tc.want {

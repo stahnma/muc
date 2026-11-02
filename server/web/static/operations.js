@@ -45,7 +45,7 @@
         return 'just now';
     }
 
-    const ACTIONS = { update: 'Update', reboot: 'Reboot', checkin: 'Check-in' };
+    const ACTIONS = { update: 'Update', reboot: 'Reboot', checkin: 'Check-in', benchmark: 'Benchmark' };
 
     // What a line says happened, and the colour it is said in. A request is
     // described by what became of it; the host's own reports by their event.
