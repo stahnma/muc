@@ -325,6 +325,109 @@ h1 {
     overflow-wrap: anywhere;
 }
 
+/* Where there is a mouse, the sidebar tucks away to a rail at the left edge
+   and slides out over the page when the pointer reaches it, so the table
+   gets the width back. The rail carries a menu mark and the word, so the
+   edge reads as something to reach for rather than a stray border.
+
+   It opens over the page instead of pushing it aside: a table that jumped
+   sideways every time the pointer drifted left would be worse than the
+   space it saves. Closing waits a moment, so a pointer that overshoots the
+   edge does not snap it shut. Keyboard focus opens it too, so tabbing into
+   the nav works as before. Touch screens, with no hover to open it, keep
+   the sidebar as it was; phones keep their band across the top. */
+@media (min-width: 901px) and (hover: hover) {
+    :root {
+        --sidebar-rail: 44px;
+        --sidebar-open: 220px;
+    }
+
+    .app-shell {
+        padding-left: var(--sidebar-rail);
+    }
+
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 60;
+        width: var(--sidebar-open);
+        transform: translateX(calc(var(--sidebar-rail) - var(--sidebar-open)));
+        transition: transform 0.18s ease 0.25s, box-shadow 0.18s ease 0.25s;
+    }
+
+    .sidebar:hover,
+    .sidebar:focus-within {
+        transform: none;
+        box-shadow: var(--shadow-lg);
+        transition-delay: 0.06s;
+    }
+
+    /* The contents fade in as it opens, so the closed rail shows only its
+       own mark and not the clipped edge of the links behind it. */
+    .sidebar > * {
+        opacity: 0;
+        transition: opacity 0.12s ease 0.25s;
+    }
+
+    .sidebar:hover > *,
+    .sidebar:focus-within > * {
+        opacity: 1;
+        transition-delay: 0.1s;
+    }
+
+    /* The rail: three bars at the top, the word beneath them, running up
+       the strip that stays on screen. */
+    .sidebar::before,
+    .sidebar::after {
+        position: fixed;
+        left: calc(var(--sidebar-open) - var(--sidebar-rail));
+        width: var(--sidebar-rail);
+        pointer-events: none;
+        transition: opacity 0.12s ease 0.3s;
+    }
+
+    .sidebar::before {
+        content: "";
+        top: 30px;
+        height: 14px;
+        background:
+            linear-gradient(var(--text-secondary), var(--text-secondary)) center 0 / 18px 2px no-repeat,
+            linear-gradient(var(--text-secondary), var(--text-secondary)) center 6px / 18px 2px no-repeat,
+            linear-gradient(var(--text-secondary), var(--text-secondary)) center 12px / 18px 2px no-repeat;
+    }
+
+    .sidebar::after {
+        content: "Menu";
+        top: 58px;
+        display: flex;
+        justify-content: center;
+        writing-mode: vertical-rl;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+
+    .sidebar:hover::before,
+    .sidebar:hover::after,
+    .sidebar:focus-within::before,
+    .sidebar:focus-within::after {
+        opacity: 0;
+        transition-delay: 0s;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .sidebar,
+        .sidebar > *,
+        .sidebar::before,
+        .sidebar::after {
+            transition-duration: 0s;
+        }
+    }
+}
+
 /* The way back to the dashboard from a host's page, beside the theme key:
    the sidebar has it too, but this is where the eye already is. */
 .back-to-hud {
