@@ -146,8 +146,8 @@ func (m *wsConnectionManager) broadcast(update interface{}) {
 // instead of two; rebooter is the same for remote reboots. checkins has no such
 // flag — asking a host to check in is not gated — and is nil only when there is
 // no NATS connection to ask over. runs carries the live output of update runs
-// in flight.
-func StartWebServer(store storage.Storage, port string, version string, updater api.UpdateRequester, rebooter api.RebootRequester, checkins api.CheckInRequester, runs *runlog.Store) {
+// in flight. benchmarks is the same as checkins: ungated, nil only without NATS.
+func StartWebServer(store storage.Storage, port string, version string, updater api.UpdateRequester, rebooter api.RebootRequester, checkins api.CheckInRequester, benchmarks api.BenchmarkRequester, runs *runlog.Store) {
 	r := mux.NewRouter()
 	connManager := newWSConnectionManager()
 
@@ -184,6 +184,10 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 	r.HandleFunc("/api/systems/{hostname}/update/output", api.UpdateOutputHandler(runs)).Methods("GET")
 	r.HandleFunc("/api/features", api.FeaturesHandler(updater, rebooter)).Methods("GET")
 
+	// Hardware and benchmarks, for comparing hosts with each other.
+	r.HandleFunc("/api/hardware", api.HardwareHandler(store)).Methods("GET")
+	r.HandleFunc("/api/systems/{hostname}/benchmark", api.BenchmarkHandler(store, benchmarks)).Methods("POST")
+
 	// The operations log: what hosts were asked to do and what they said.
 	r.HandleFunc("/api/operations", api.OperationsHandler(store)).Methods("GET")
 	r.HandleFunc("/api/systems/{hostname}/operations", api.SystemOperationsHandler(store)).Methods("GET")
@@ -208,6 +212,9 @@ func StartWebServer(store storage.Storage, port string, version string, updater 
 
 	// The operations log, for every host or (with ?host=) for one.
 	r.HandleFunc("/operations", pageHandler("templates/operations.html", version))
+
+	// Every host's hardware side by side, ranked by what its benchmark measured.
+	r.HandleFunc("/hardware", pageHandler("templates/hardware.html", version))
 
 	// One host's own page. The page reads the hostname from its path and
 	// draws the host from the API, so an unknown name is the page's to

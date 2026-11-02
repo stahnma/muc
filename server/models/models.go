@@ -31,9 +31,22 @@ type System struct {
 	UpdateCheckWarnings []string `json:"update_check_warnings,omitempty"`
 	CPUModel            string   `json:"cpu_model"`
 	CPUCores            int      `json:"cpu_cores"`
-	MemoryTotalBytes    uint64   `json:"memory_total_bytes"`
-	UptimeSeconds       uint64   `json:"uptime_seconds"`
-	RebootRequired      bool     `json:"reboot_required"`
+	// The hardware facts below arrived with the hardware page; a client from
+	// before it leaves them zero, which the page shows as unknown.
+	CPUPhysicalCores int     `json:"cpu_physical_cores,omitempty"`
+	CPUMaxMHz        float64 `json:"cpu_max_mhz,omitempty"`
+	// Virtualization names the hypervisor or container runtime the host is a
+	// guest of, or is empty on bare metal.
+	Virtualization       string `json:"virtualization,omitempty"`
+	MemoryTotalBytes     uint64 `json:"memory_total_bytes"`
+	MemoryAvailableBytes uint64 `json:"memory_available_bytes,omitempty"`
+	// Disk* describe the root filesystem. DiskMedia is nvme, ssd, hdd, flash
+	// (SD card or eMMC) or virtual, or empty when the host could not tell.
+	DiskTotalBytes uint64 `json:"disk_total_bytes,omitempty"`
+	DiskFreeBytes  uint64 `json:"disk_free_bytes,omitempty"`
+	DiskMedia      string `json:"disk_media,omitempty"`
+	UptimeSeconds  uint64 `json:"uptime_seconds"`
+	RebootRequired bool   `json:"reboot_required"`
 	// Tailscale is nil until a host reports tailnet membership, and stays
 	// non-nil afterwards — see MergeTailscale.
 	Tailscale *Tailscale `json:"tailscale,omitempty"`
@@ -55,6 +68,39 @@ type System struct {
 	// carried across check-ins; unlike it, the host cannot report its own end —
 	// see Reboot.
 	LastReboot *Reboot `json:"last_reboot,omitempty"`
+	// BenchmarkSupported is reported by the client: it listens for benchmark
+	// commands. Clients from before benchmarks existed leave it false, and the
+	// scheduler does not ask them.
+	BenchmarkSupported bool `json:"benchmark_supported"`
+	// Benchmark is the host's most recent benchmark, or nil where none has
+	// run. Like LastUpdateRun it arrives on its own subject and is carried
+	// across check-ins.
+	Benchmark *Benchmark `json:"benchmark,omitempty"`
+}
+
+// Benchmark is one run of the client's CPU benchmark: DEFLATE compression of a
+// fixed corpus, timed on one thread and then on all of them. Its JSON must stay
+// in step with the client's benchmarkRecord.
+type Benchmark struct {
+	ID          string `json:"id"`
+	RequestedBy string `json:"requested_by,omitempty"`
+	FinishedAt  string `json:"finished_at"`
+	// Version identifies the workload; scores are only comparable within one.
+	Version          int     `json:"version"`
+	SingleThreadMBps float64 `json:"single_thread_mbps"`
+	MultiThreadMBps  float64 `json:"multi_thread_mbps"`
+	// Threads is how many workers the multi-threaded half ran.
+	Threads         int     `json:"threads"`
+	DurationSeconds float64 `json:"duration_seconds"`
+}
+
+// BenchmarkAck is a host's immediate answer to a benchmark request. The result
+// follows on its own subject some seconds later.
+type BenchmarkAck struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Accepted bool   `json:"accepted"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // Reboot records one dashboard-triggered reboot. The client publishes it once,

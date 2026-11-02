@@ -341,3 +341,40 @@ func TestRebootCompletionIsLoggedOnce(t *testing.T) {
 		t.Errorf("logged %+v, want reboot r1 rebooted", op)
 	}
 }
+
+// TestBenchmarkResultHandlerRecordsAndLogs covers the path that puts a score
+// on the hardware page, and the operations log line that goes with it.
+func TestBenchmarkResultHandlerRecordsAndLogs(t *testing.T) {
+	store := newMemStore(models.System{Hostname: "rog", BenchmarkSupported: true})
+	bench := models.Benchmark{ID: "b1", Version: 1, SingleThreadMBps: 31.2, MultiThreadMBps: 250, Threads: 16}
+
+	benchmarkResultHandler(store)(msg(t, "systems.results.benchmark.rog", bench))
+
+	got := store.systems["rog"].Benchmark
+	if got == nil || got.MultiThreadMBps != 250 {
+		t.Fatalf("Benchmark = %+v, want the published result", got)
+	}
+	if got.FinishedAt == "" {
+		t.Error("a result without a finish time was not stamped")
+	}
+	ops, _ := store.GetOperations("rog", 0, 10)
+	if len(ops) != 1 || ops[0].Action != "benchmark" || ops[0].Event != models.OperationSucceeded {
+		t.Fatalf("operations = %+v, want one succeeded benchmark line", ops)
+	}
+}
+
+// TestCheckInKeepsTheBenchmark: like update runs, benchmarks are not part of
+// a check-in, and must outlive the next one.
+func TestCheckInKeepsTheBenchmark(t *testing.T) {
+	store := newMemStore(models.System{Hostname: "rog", Benchmark: &models.Benchmark{ID: "b1"}})
+
+	checkInHandler(store)(msg(t, "systems.updates.rog", models.System{Hostname: "rog", BenchmarkSupported: true}))
+
+	got := store.systems["rog"]
+	if got.Benchmark == nil || got.Benchmark.ID != "b1" {
+		t.Fatalf("Benchmark = %+v, want the previous one carried forward", got.Benchmark)
+	}
+	if !got.BenchmarkSupported {
+		t.Error("the check-in's own fields were not saved")
+	}
+}

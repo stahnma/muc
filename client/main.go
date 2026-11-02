@@ -59,7 +59,14 @@ type System struct {
 	ClientVersion       string   `json:"client_version"`
 	CPUModel            string   `json:"cpu_model"`
 	CPUCores            int      `json:"cpu_cores"`
+	CPUPhysicalCores    int      `json:"cpu_physical_cores,omitempty"`
+	CPUMaxMHz           float64  `json:"cpu_max_mhz,omitempty"`
+	Virtualization      string   `json:"virtualization,omitempty"`
 	MemoryTotalBytes    uint64   `json:"memory_total_bytes"`
+	MemoryAvailable     uint64   `json:"memory_available_bytes,omitempty"`
+	DiskTotalBytes      uint64   `json:"disk_total_bytes,omitempty"`
+	DiskFreeBytes       uint64   `json:"disk_free_bytes,omitempty"`
+	DiskMedia           string   `json:"disk_media,omitempty"`
 	UptimeSeconds       uint64   `json:"uptime_seconds"`
 	RebootRequired      bool     `json:"reboot_required"`
 	// Tailscale is omitted entirely for hosts with no tailnet membership to
@@ -74,6 +81,10 @@ type System struct {
 	// RemoteRebootEnabled says this host is listening for reboot commands. Its
 	// own flag, reported the same way, for the dashboard's reboot button.
 	RemoteRebootEnabled bool `json:"remote_reboot_enabled"`
+	// BenchmarkSupported says this host is listening for benchmark commands,
+	// so the server knows which hosts to ask and which run a client too old
+	// to be asked.
+	BenchmarkSupported bool `json:"benchmark_supported"`
 }
 
 // capabilities is what this client actually listens for, which is not simply
@@ -82,6 +93,7 @@ type System struct {
 type capabilities struct {
 	remoteUpdates bool
 	remoteReboot  bool
+	benchmark     bool
 }
 
 // Collects all system data to prepare for publishing.
@@ -89,6 +101,7 @@ func collectSystemData(caps capabilities) (System, error) {
 	var system System
 	system.RemoteUpdatesEnabled = caps.remoteUpdates
 	system.RemoteRebootEnabled = caps.remoteReboot
+	system.BenchmarkSupported = caps.benchmark
 
 	// Hostname
 	hostname, err := os.Hostname()
@@ -166,7 +179,14 @@ func collectSystemData(caps capabilities) (System, error) {
 	hw := hostinfo.Collect()
 	system.CPUModel = hw.CPUModel
 	system.CPUCores = hw.CPUCores
+	system.CPUPhysicalCores = hw.CPUPhysicalCores
+	system.CPUMaxMHz = hw.CPUMaxMHz
+	system.Virtualization = hw.Virtualization
 	system.MemoryTotalBytes = hw.MemoryTotalBytes
+	system.MemoryAvailable = hw.MemoryAvailableBytes
+	system.DiskTotalBytes = hw.DiskTotalBytes
+	system.DiskFreeBytes = hw.DiskFreeBytes
+	system.DiskMedia = hw.DiskMedia
 	system.UptimeSeconds = hw.UptimeSeconds
 	system.RebootRequired = hw.RebootRequired
 	system.Tailscale = hw.Tailscale
@@ -454,6 +474,15 @@ func main() {
 	// opted in without a usable update command — advertising the capability
 	// then would put a button on the dashboard that could only ever fail.
 	var caps capabilities
+
+	// Benchmarks, like check-ins, need no opt-in and bound themselves.
+	if hostErr != nil {
+		slog.Error("Hostname is unknown; not listening for benchmark commands", "error", hostErr)
+	} else if err := startBenchmarkListener(nc, hostname); err != nil {
+		slog.Error("Cannot listen for benchmark commands", "error", err)
+	} else {
+		caps.benchmark = true
+	}
 	var runner *updateRunner
 	if cfg.AllowRemoteUpdates {
 		if hostErr != nil {

@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-// action names the three things the dashboard can ask of a host.
+// action names the things the dashboard can ask of a host.
 //
 // It exists so the precondition ladder below is written once instead of three
 // times, and — the real point — so a group action is guaranteed to skip exactly
@@ -23,6 +23,9 @@ const (
 	actionUpdate  action = "update"
 	actionCheckIn action = "checkin"
 	actionReboot  action = "reboot"
+	// actionBenchmark has no group route: comparing hosts wants them timed
+	// one at a time, which is the scheduler's job, not a fan-out's.
+	actionBenchmark action = "benchmark"
 )
 
 // The outcome of asking one host to do one thing.
@@ -45,6 +48,7 @@ const (
 	CodeUnknownHost     = "unknown_host"
 	CodeNotOptedIn      = "not_opted_in"
 	CodeNoRebootPending = "no_reboot_pending"
+	CodeNotSupported    = "not_supported"
 	CodeHostRefused     = "host_refused"
 	CodeNotListening    = "not_listening"
 	CodeRequestFailed   = "request_failed"
@@ -64,14 +68,15 @@ type HostActionResult struct {
 	Command  string `json:"command,omitempty"`
 }
 
-// requesters bundles the three narrow interfaces so one value reaches dispatch.
+// requesters bundles the narrow interfaces so one value reaches dispatch.
 // Any of them may be nil, but the nil check belongs to the caller: a feature is
 // off once per request, not once per member, and the two routes that can be off
 // say so differently.
 type requesters struct {
-	update  UpdateRequester
-	checkIn CheckInRequester
-	reboot  RebootRequester
+	update    UpdateRequester
+	checkIn   CheckInRequester
+	reboot    RebootRequester
+	benchmark BenchmarkRequester
 }
 
 // statusFor maps an outcome back to the HTTP status the single-host route has
@@ -161,6 +166,12 @@ func attempt(store storage.Storage, act action, req requesters, hostname, reques
 			res.Reason = "This host did not report a pending reboot at its last check-in"
 			return res
 		}
+	case actionBenchmark:
+		if !system.BenchmarkSupported {
+			res.Outcome, res.Code = OutcomeSkipped, CodeNotSupported
+			res.Reason = "This host's client is too old to run benchmarks; upgrade muc-client on it"
+			return res
+		}
 	}
 
 	var (
@@ -176,6 +187,9 @@ func attempt(store storage.Storage, act action, req requesters, hostname, reques
 		err, accepted, reason, res.ID = reqErr, ack.Accepted, ack.Reason, ack.ID
 	case actionCheckIn:
 		ack, reqErr := req.checkIn.RequestCheckIn(hostname, requestedBy)
+		err, accepted, reason, res.ID = reqErr, ack.Accepted, ack.Reason, ack.ID
+	case actionBenchmark:
+		ack, reqErr := req.benchmark.RequestBenchmark(hostname, requestedBy)
 		err, accepted, reason, res.ID = reqErr, ack.Accepted, ack.Reason, ack.ID
 	}
 
@@ -216,6 +230,8 @@ func notListeningReason(act action, hostname string) string {
 		return "No response from " + hostname + ": it is offline, or its client is no longer accepting update commands"
 	case actionReboot:
 		return "No response from " + hostname + ": it is offline, or its client is no longer accepting reboot commands"
+	case actionBenchmark:
+		return "No response from " + hostname + ": it is offline, or its client is too old to run benchmarks"
 	default:
 		return "No response from " + hostname + ": it is offline, or its client is too old to accept check-in requests"
 	}
@@ -227,6 +243,8 @@ func failedPrefix(act action) string {
 		return "Update request failed"
 	case actionReboot:
 		return "Reboot request failed"
+	case actionBenchmark:
+		return "Benchmark request failed"
 	default:
 		return "Check-in request failed"
 	}
@@ -238,6 +256,8 @@ func refusalReason(act action) string {
 		return "the host refused the update request"
 	case actionReboot:
 		return "the host refused the reboot request"
+	case actionBenchmark:
+		return "the host refused the benchmark request"
 	default:
 		return "the host refused the check-in request"
 	}

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware - My Update Center</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>
+        // Apply theme immediately to prevent flash of unstyled content
+        (function() {
+            const theme = localStorage.getItem('muc-theme') ||
+                (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            if (theme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+    <link rel="preload" href="/static/fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/martian-mono-wdth.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/styles.css?v=22">
+    <script src="/static/theme.js" defer></script>
+    <script src="/static/hardware.js?v=1" defer></script>
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="sidebar-brand" href="/">My Update Center</a>
+            <nav class="site-nav" aria-label="Site">
+                <a href="/">Dashboard</a>
+                <a href="/operations">Operations log</a>
+                <a href="/hardware" aria-current="page">Hardware</a>
+                <a href="/apidoc">API docs</a>
+            </nav>
+        </aside>
+        <div class="page">
+            <header class="masthead">
+                <h1>Hardware</h1>
+                <div class="masthead-tools">
+                    <button id="theme-toggle-btn" class="theme-toggle" aria-label="Switch theme">☀️</button>
+                </div>
+            </header>
+            <!-- Every host side by side. Scores come from a short benchmark each
+                 client runs when it first appears and weekly after: DEFLATE
+                 compression, timed on one thread and on all of them, so a VM
+                 is measured by the CPU it gets rather than the chip it is on. -->
+            <div class="hw-controls">
+                <span class="hw-controls-label" id="hw-rank-label">Rank by</span>
+                <div class="hw-rank" role="radiogroup" aria-labelledby="hw-rank-label">
+                    <button type="button" role="radio" data-rank="multi" aria-checked="true">All cores</button>
+                    <button type="button" role="radio" data-rank="single" aria-checked="false">One core</button>
+                    <button type="button" role="radio" data-rank="memory" aria-checked="false">Memory</button>
+                    <button type="button" role="radio" data-rank="disk" aria-checked="false">Disk</button>
+                </div>
+                <span id="hw-status" class="oplog-status" role="status"></span>
+            </div>
+
+            <section class="hw-chart-card" aria-labelledby="hw-chart-title">
+                <div class="hw-chart-head">
+                    <div>
+                        <h2 id="hw-chart-title">Fast cores vs. many cores</h2>
+                        <p class="hw-chart-sub">Up is more total throughput; right is a faster single core. MB/s compressed.</p>
+                    </div>
+                    <ul class="hw-legend" id="hw-legend"></ul>
+                </div>
+                <div class="hw-chart" id="hw-chart"></div>
+                <p class="hw-unmeasured" id="hw-unmeasured"></p>
+            </section>
+
+            <div class="hw-table-wrap">
+            <table class="hw-table">
+                <thead>
+                    <tr>
+                        <th class="hw-rank-col">#</th>
+                        <th>Host</th>
+                        <th>CPU</th>
+                        <th>All cores</th>
+                        <th>One core</th>
+                        <th>Memory</th>
+                        <th>Root disk</th>
+                        <th>Measured</th>
+                    </tr>
+                </thead>
+                <tbody id="hw-rows"></tbody>
+            </table>
+            </div>
+            <p class="hw-footnote">
+                Scores are DEFLATE compression throughput, in MB/s, from a six-second benchmark each host runs
+                when it first checks in and weekly after. Bars are relative to the best host on this page.
+                A host only runs one when it is idle, and no more than once every ten minutes.
+            </p>
+            <footer class="floating-footer">
+                <a href="https://github.com/stahnma/muc" target="_blank" rel="noopener noreferrer">GitHub Source</a>
+                <span class="separator">|</span>
+                <span>{{VERSION}}</span>
+            </footer>
+        </div>
+    </div>
+    <div class="hw-tooltip" id="hw-tooltip" role="tooltip" hidden></div>
+</body>
+</html>
