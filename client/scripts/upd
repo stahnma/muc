@@ -14,7 +14,8 @@
 #   2  usage error
 #   3  no supported package manager on this host
 #   4  not running as root and no sudo available
-#   5  another package manager is already running
+#   5  another package manager is already running (rpm hosts; on deb hosts
+#      apt waits for the dpkg lock instead, see update_deb)
 
 set -Eeuo pipefail
 
@@ -67,7 +68,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 # A concurrent apt/dnf run makes the upgrade block on a lock (or fail halfway).
 # Say so plainly instead of hanging with no output, which is what you get when
-# unattended-upgrades or PackageKit got there first.
+# PackageKit got there first. Only used on rpm hosts; see update_deb for apt.
 check_not_busy() {
   local pat=$1 pids
   if have pgrep && pids=$(pgrep -d' ' -x "$pat" 2>/dev/null) && [[ -n $pids ]]; then
@@ -85,26 +86,31 @@ update_deb() {
   else die 3 "dpkg is present but neither apt-get nor apt was found"
   fi
 
-  check_not_busy apt-get
-  check_not_busy unattended-upgr
+  # Let apt wait for the dpkg lock rather than guessing from process names.
+  # A name check cannot work here: comm is truncated to 15 characters, so the
+  # real upgrader and the always-running unattended-upgrade-shutdown daemon
+  # are both "unattended-upgr", and a check on apt-get alone misses apt,
+  # aptitude, dpkg and PackageKit. apt prints who holds the lock while it
+  # waits, so the run is not silent. Older apt (< 1.9.11) ignores the option.
+  local -a lock=(-o DPkg::Lock::Timeout=600)
 
   export DEBIAN_FRONTEND=noninteractive
 
   log "refreshing package lists"
-  if ! "${SUDO[@]}" "$apt" update -q; then
+  if ! "${SUDO[@]}" "$apt" "${lock[@]}" update -q; then
     die 1 "'$apt update' failed — package lists are stale, refusing to upgrade"
   fi
 
   if (( dry_run )); then
     log "dry run — would run: $apt dist-upgrade -y"
-    "${SUDO[@]}" "$apt" -s dist-upgrade || die 1 "'$apt -s dist-upgrade' failed"
+    "${SUDO[@]}" "$apt" "${lock[@]}" -s dist-upgrade || die 1 "'$apt -s dist-upgrade' failed"
     return 0
   fi
 
   log "upgrading packages"
   # Keep any locally modified conffiles instead of stopping to ask, which
   # would hang a non-interactive run forever.
-  if ! "${SUDO[@]}" "$apt" dist-upgrade -y \
+  if ! "${SUDO[@]}" "$apt" "${lock[@]}" dist-upgrade -y \
       -o Dpkg::Options::=--force-confdef \
       -o Dpkg::Options::=--force-confold; then
     die 1 "'$apt dist-upgrade' failed"
